@@ -1,0 +1,9 @@
+{
+  "name": "yagents-monorepo",
+  "private": true,
+  "workspaces": ["app", "server"],
+  "scripts": {
+    "test": "npm test -w app && npm test -w server --if-present",
+    "build": "npm run build -w app"
+  }
+}
