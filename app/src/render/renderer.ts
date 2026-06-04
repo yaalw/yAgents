@@ -44,7 +44,8 @@ export class Renderer {
 
   /** Hit test in screen px; returns the character key or null. */
   hitTest(sx: number, sy: number): string | null {
-    const w = this.camera.screenToWorld(sx * devicePixelRatio / 1, sy * devicePixelRatio / 1)
+    // sx/sy are CSS px; the draw transform is scale(camera.scale * dpr) so CSS→world needs no dpr factor
+    const w = this.camera.screenToWorld(sx, sy)
     for (const c of this.characters.all()) {
       const px = c.x * TILE, py = c.y * TILE
       if (w.x >= px - 2 && w.x <= px + TILE + 2 && w.y >= py - 6 && w.y <= py + TILE + 2) return c.key
