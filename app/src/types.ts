@@ -2,7 +2,8 @@ export type AgentStatus =
   | 'typing' | 'reading' | 'running' | 'browsing'
   | 'thinking' | 'waiting' | 'delegating' | 'working' | 'idle'
 
-/** Raw file snapshot from any adapter. content is the (tail of the) whole JSONL file. */
+/** Raw file snapshot from any adapter. content is the file's full text, or its last
+ *  256 KB for large files (may start mid-line; the parser skips partial first lines). */
 export interface FileEvent {
   dirKey: string      // encoded project dir name, e.g. "-Users-y-webshop"
   fileName: string    // e.g. "abc123.jsonl" or "agent-xyz.jsonl"
