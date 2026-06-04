@@ -74,4 +74,23 @@ describe('SessionTracker', () => {
     feed(t, asstTool('t1', 'Write'))
     expect(t.lastActivityMs).toBe(Date.parse('2026-06-04T01:00:00Z'))
   })
+  it('tool_result transitions main agent to thinking (or delegating if subagents remain)', () => {
+    const t = new SessionTracker()
+    feed(t, asstTool('b1', 'Bash', { command: 'ls' }))
+    expect(t.status).toBe('running')
+    feed(t, userResult('b1'))
+    expect(t.status).toBe('thinking')
+    feed(t, asstTool('task1', 'Task'))
+    feed(t, asstTool('b2', 'Bash'))
+    feed(t, userResult('b2'))
+    expect(t.status).toBe('delegating') // task1 still open
+  })
+  it('ignores Task tool_use with missing id (no phantom subagent)', () => {
+    const t = new SessionTracker()
+    feed(t, {
+      type: 'assistant', timestamp: '2026-06-04T01:00:00Z', sessionId: 's1',
+      message: { role: 'assistant', content: [{ type: 'tool_use', name: 'Task', input: {} }] },
+    })
+    expect(t.subagents).toHaveLength(0)
+  })
 })

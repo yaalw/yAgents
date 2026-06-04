@@ -26,6 +26,7 @@ export class SessionTracker {
   feed(line: ParsedLine): void {
     if (line.timestampMs) this.lastActivityMs = Math.max(this.lastActivityMs, line.timestampMs)
     if (line.isSidechain) {
+      // last tool wins for display status; rare multi-tool turns (e.g. [Task, Bash]) show the latest
       const tu = line.toolUses[line.toolUses.length - 1]
       const sub = this.open[this.open.length - 1]
       if (tu && sub) sub.status = statusForTool(tu.name)
@@ -37,12 +38,14 @@ export class SessionTracker {
 
     if (line.role === 'assistant') {
       if (line.toolUses.length > 0) {
+        // last tool wins for display status; rare multi-tool turns (e.g. [Task, Bash]) show the latest
         const tu = line.toolUses[line.toolUses.length - 1]!
         this.lastTool = tu.name
         this.lastToolTarget = tu.target
         this.status = statusForTool(tu.name)
         for (const t of line.toolUses) {
-          if (t.name === 'Task') this.open.push({ id: t.id, status: 'working' })
+          // skip falsy ids: their tool_result could never match, leaking a phantom subagent
+          if (t.name === 'Task' && t.id) this.open.push({ id: t.id, status: 'working' })
         }
       } else if (line.hasText) {
         this.status = 'waiting'
@@ -50,7 +53,8 @@ export class SessionTracker {
     } else {
       if (line.toolResultIds.length > 0) {
         this.open = this.open.filter(s => !line.toolResultIds.includes(s.id))
-        if (this.status === 'waiting') this.status = 'thinking'
+        // tool finished: agent is processing the result — unless subagents are still out working
+        this.status = this.open.length > 0 ? 'delegating' : 'thinking'
       } else if (line.hasText) {
         this.status = 'thinking'
       }
