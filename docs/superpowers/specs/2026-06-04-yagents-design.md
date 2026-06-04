@@ -61,7 +61,7 @@ Each session is one JSONL file under `~/.claude/projects/<encoded-folder-path>/`
 | `tool_use: Read / Grep / Glob` | reading | holding a document |
 | `tool_use: Bash` | running | staring at a terminal |
 | `tool_use: WebSearch / WebFetch` | browsing | looking at a screen/globe |
-| `tool_use: Task` | delegating | subagent walks in, takes a seat |
+| `tool_use: Task` or `Agent` | delegating | subagent walks in, takes a seat |
 | assistant text, no pending tool | thinking | thought bubble |
 | turn ended, awaiting user (incl. permission prompts) | waiting | walks to kitchen, sips coffee |
 | no file activity > 5 min (configurable; does not apply to `waiting` agents) | session over | packs up, leaves; table removed |
@@ -71,7 +71,7 @@ Each session is one JSONL file under `~/.claude/projects/<encoded-folder-path>/`
 
 **Liveness rules:**
 - Session alive = transcript modified within the last 5 minutes (configurable)
-- Waiting agents stay alive indefinitely (they are in the kitchen, not gone)
+- Waiting agents get a longer grace window (30 min) but are NOT kept indefinitely — finished sessions also end in `waiting`, so an unbounded rule would resurrect every historical project as a permanent room
 - Folder with zero live sessions → room fades out; reappears when a session starts there
 - On launch, scan for already-live transcripts so the office populates instantly
 

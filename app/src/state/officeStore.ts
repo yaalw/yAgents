@@ -3,6 +3,10 @@ import { parseLine } from '../parser/transcript'
 import { SessionTracker } from '../parser/session'
 
 const EXPIRY_MS = 5 * 60_000
+// A genuinely-waiting agent (parked in the kitchen waiting on you) gets a longer grace
+// window than an actively-working one — but NOT forever. Finished sessions also end in
+// `waiting`, so an unbounded rule would resurrect every historical project as a permanent room.
+const WAITING_EXPIRY_MS = 30 * 60_000
 
 interface Entry { tracker: SessionTracker; mtimeMs: number; dirKey: string; fileName: string }
 
@@ -63,8 +67,8 @@ export class OfficeStore {
         if (s.dirKey !== dirKey) continue
         const t = s.tracker
         const lastActivity = Math.max(t.lastActivityMs, s.mtimeMs)
-        const live = t.status === 'waiting' || now - lastActivity < EXPIRY_MS
-        if (!live) continue
+        const window = t.status === 'waiting' ? WAITING_EXPIRY_MS : EXPIRY_MS
+        if (now - lastActivity >= window) continue
         cwd ??= t.cwd
         tables.push({
           key, sessionId: t.sessionId, status: t.status,

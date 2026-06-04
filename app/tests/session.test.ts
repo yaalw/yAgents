@@ -25,6 +25,7 @@ describe('statusForTool', () => {
     expect(statusForTool('Bash')).toBe('running')
     expect(statusForTool('WebSearch')).toBe('browsing')
     expect(statusForTool('Task')).toBe('delegating')
+    expect(statusForTool('Agent')).toBe('delegating')
   })
   it('maps unknown tools to working (never crash)', () => {
     expect(statusForTool('SomeFutureTool')).toBe('working')
@@ -91,6 +92,20 @@ describe('SessionTracker', () => {
       type: 'assistant', timestamp: '2026-06-04T01:00:00Z', sessionId: 's1',
       message: { role: 'assistant', content: [{ type: 'tool_use', name: 'Task', input: {} }] },
     })
+    expect(t.subagents).toHaveLength(0)
+  })
+  it('recognizes the Agent tool as a subagent spawn (this Claude Code build names it Agent, not Task)', () => {
+    const t = new SessionTracker()
+    feed(t, asstTool('ag1', 'Agent', { description: 'explore' }))
+    expect(t.status).toBe('delegating')
+    expect(t.subagents).toHaveLength(1)
+    feed(t, userResult('ag1'))
+    expect(t.subagents).toHaveLength(0)
+  })
+  it('does NOT treat TaskCreate/TaskUpdate (todo tools) as subagent spawns', () => {
+    const t = new SessionTracker()
+    feed(t, asstTool('tc1', 'TaskCreate'))
+    feed(t, asstTool('tu1', 'TaskUpdate'))
     expect(t.subagents).toHaveLength(0)
   })
 })

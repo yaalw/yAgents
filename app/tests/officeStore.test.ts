@@ -29,16 +29,18 @@ describe('OfficeStore', () => {
     store.ingest({ dirKey: 'd', fileName: 'a.jsonl', content: c, mtimeMs: T0 })
     expect(store.view().rooms[0]!.tables).toHaveLength(1)
   })
-  it('expires inactive sessions after 5 min but keeps waiting agents forever', () => {
+  it('expires active sessions after 5 min and waiting sessions after a longer bounded window', () => {
     const now = { t: T0 + 1000 }
     const store = new OfficeStore(() => now.t)
     store.ingest({ dirKey: 'd1', fileName: 'busy.jsonl', content: asstTool(T0, 'Bash'), mtimeMs: T0 })
     store.ingest({ dirKey: 'd2', fileName: 'waiting.jsonl', content: asstText(T0), mtimeMs: T0 })
     expect(store.view().rooms).toHaveLength(2)
-    now.t = T0 + 6 * 60_000
+    now.t = T0 + 6 * 60_000          // 6 min: active session gone, waiting session still parked in the kitchen
     const v = store.view()
     expect(v.rooms).toHaveLength(1)
     expect(v.rooms[0]!.tables[0]!.status).toBe('waiting')
+    now.t = T0 + 31 * 60_000         // 31 min untouched: a finished/abandoned waiting session expires too
+    expect(store.view().rooms).toHaveLength(0)
   })
   it('uses mtime as activity floor (recent write keeps session alive even with old entry timestamps)', () => {
     const now = { t: T0 + 6 * 60_000 }

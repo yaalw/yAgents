@@ -6,8 +6,13 @@ const TOOL_STATUS: Record<string, AgentStatus> = {
   Read: 'reading', Grep: 'reading', Glob: 'reading',
   Bash: 'running',
   WebSearch: 'browsing', WebFetch: 'browsing',
-  Task: 'delegating',
+  Task: 'delegating', Agent: 'delegating',
 }
+
+// Tools that spawn a subagent. This Claude Code build names the tool `Agent`;
+// older/other builds use `Task`. Exact match only — `TaskCreate`/`TaskUpdate` are
+// todo-list tools, NOT subagents, and must never create seats.
+const SPAWN_TOOLS = new Set(['Task', 'Agent'])
 
 export function statusForTool(name: string): AgentStatus {
   return TOOL_STATUS[name] ?? 'working'
@@ -45,7 +50,7 @@ export class SessionTracker {
         this.status = statusForTool(tu.name)
         for (const t of line.toolUses) {
           // skip falsy ids: their tool_result could never match, leaking a phantom subagent
-          if (t.name === 'Task' && t.id) this.open.push({ id: t.id, status: 'working' })
+          if (SPAWN_TOOLS.has(t.name) && t.id) this.open.push({ id: t.id, status: 'working' })
         }
       } else if (line.hasText) {
         this.status = 'waiting'
