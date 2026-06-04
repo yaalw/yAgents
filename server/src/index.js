@@ -21,8 +21,9 @@ const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css
 
 const server = http.createServer((req, res) => {
   const urlPath = (req.url ?? '/').split('?')[0]
-  let file = join(APP_DIST, urlPath === '/' ? 'index.html' : urlPath)
-  if (!existsSync(file)) file = join(APP_DIST, 'index.html')
+  let file = resolve(APP_DIST, '.' + (urlPath === '/' ? '/index.html' : urlPath))
+  // containment guard: anything resolving outside APP_DIST (e.g. ../ traversal) falls back to index.html
+  if (!file.startsWith(APP_DIST + '/') || !existsSync(file)) file = join(APP_DIST, 'index.html')
   try {
     const body = readFileSync(file)
     res.writeHead(200, { 'content-type': MIME[extname(file)] ?? 'application/octet-stream' })
