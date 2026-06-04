@@ -48,7 +48,6 @@ async function pickAdapter(): Promise<DataAdapter> {
 }
 
 canvas.addEventListener('click', ev => {
-    if (moved > 4) { moved = 0; return } // this was a drag, not a click — don't toggle the panel
   const key = renderer.hitTest(ev.clientX, ev.clientY)
   if (key) panel.show(view, key)
   else panel.hide()
@@ -60,13 +59,13 @@ window.addEventListener('mousemove', ev => {
   if (!dragging) return
   const dx = ev.clientX - lastX, dy = ev.clientY - lastY
   moved += Math.abs(dx) + Math.abs(dy)
-  renderer.camera.panBy(dx, dy)
+  renderer.camera.panBy(dx * devicePixelRatio, dy * devicePixelRatio)
   lastX = ev.clientX; lastY = ev.clientY
 })
 window.addEventListener('mouseup', () => { dragging = false; canvas.classList.remove('dragging') })
 canvas.addEventListener('wheel', ev => {
   ev.preventDefault()
-  renderer.camera.zoomAt(ev.clientX, ev.clientY, ev.deltaY < 0 ? 1 : -1)
+  renderer.camera.zoomAt(ev.clientX * devicePixelRatio, ev.clientY * devicePixelRatio, ev.deltaY < 0 ? 1 : -1)
 }, { passive: false })
 
 const adapter = await pickAdapter()
