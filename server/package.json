@@ -1,0 +1,9 @@
+{
+  "name": "yagents",
+  "version": "0.1.0",
+  "description": "Pixel office for your Claude Code agents — local server mode",
+  "type": "module",
+  "bin": { "yagents": "src/index.js" },
+  "scripts": { "test": "node --test './tests/**/*.test.js'" },
+  "dependencies": { "chokidar": "^4.0.0", "ws": "^8.18.0" }
+}
