@@ -7,6 +7,11 @@ const EXPIRY_MS = 5 * 60_000
 // window than an actively-working one — but NOT forever. Finished sessions also end in
 // `waiting`, so an unbounded rule would resurrect every historical project as a permanent room.
 const WAITING_EXPIRY_MS = 30 * 60_000
+// Entries dead well past every liveness window get dropped from the Map entirely —
+// otherwise a long-running tab accumulates every session ever seen (memory leak).
+// Margin = one active window beyond the longest (waiting) window, so nothing that
+// could still re-enter the view is ever pruned.
+const PRUNE_AFTER_MS = WAITING_EXPIRY_MS + EXPIRY_MS
 
 interface Entry { tracker: SessionTracker; mtimeMs: number; dirKey: string; fileName: string }
 
@@ -94,8 +99,26 @@ export class OfficeStore {
       .sort((a, b) => b.tracker.lastActivityMs - a.tracker.lastActivityMs)[0]
   }
 
+  /** Sessions currently tracked (incl. expired-but-not-yet-pruned). For tests/diagnostics. */
+  get trackedSessionCount(): number { return this.sessions.size }
+
+  /** Drop sessions not seen as live for well past the longest liveness window.
+   *  Anything still live or merely expired-within-margin is kept untouched. */
+  private prune(now: number): void {
+    let dropped = false
+    for (const [key, s] of this.sessions) {
+      const lastActivity = Math.max(s.tracker.lastActivityMs, s.mtimeMs)
+      if (now - lastActivity >= PRUNE_AFTER_MS) { this.sessions.delete(key); dropped = true }
+    }
+    if (!dropped) return
+    // folders with no tracked sessions left don't need their order slot either
+    const liveDirs = new Set([...this.sessions.values()].map(s => s.dirKey))
+    this.dirOrder = this.dirOrder.filter(d => liveDirs.has(d))
+  }
+
   view(): OfficeView {
     const now = this.now()
+    this.prune(now) // view() runs every second — piggyback the leak guard on it
     const rooms: RoomView[] = []
     for (const dirKey of this.dirOrder) {
       const tables: TableView[] = []

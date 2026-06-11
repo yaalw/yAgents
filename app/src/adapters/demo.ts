@@ -74,7 +74,7 @@ export class DemoAdapter implements DataAdapter {
       for (let k = 0; k < DEMO_SCRIPT.length; k++) emit()
       return
     }
-    for (let k = 0; k < Math.max(1, this.burst); k++) emit()
+    for (let k = 0; k < Math.max(0, this.burst); k++) emit() // burst 0 = start empty
     this.timer = setInterval(emit, this.intervalMs)
   }
 

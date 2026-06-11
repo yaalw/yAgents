@@ -43,7 +43,12 @@ async function hasLocalServer(): Promise<boolean> {
 
 async function pickAdapter(): Promise<DataAdapter> {
   const demo = new URLSearchParams(location.search).get('demo')
-  if (demo) return new DemoAdapter(1200, parseInt(demo, 10) || 1) // ?demo=N pre-runs N script steps
+  if (demo) {
+    // ?demo=N pre-runs N script steps; ?demo=0 starts empty (shows the empty
+    // state, then the world ticks in — also our screenshot harness for it)
+    const n = parseInt(demo, 10)
+    return new DemoAdapter(1200, Number.isNaN(n) ? 1 : n)
+  }
   if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
     if (await hasLocalServer()) return new LocalServerAdapter()
   }

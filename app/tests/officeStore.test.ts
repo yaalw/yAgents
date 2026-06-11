@@ -121,6 +121,36 @@ describe('OfficeStore', () => {
       mtimeMs: T0 + 1 })
     expect(store.view().rooms[0]!.tables[0]!.subagents).toHaveLength(0)
   })
+  it('prunes sessions dead well past the waiting window (memory leak guard)', () => {
+    const now = { t: T0 + 1000 }
+    const store = new OfficeStore(() => now.t)
+    store.ingest({ dirKey: 'd1', fileName: 'busy.jsonl', content: asstTool(T0, 'Bash'), mtimeMs: T0 })
+    store.ingest({ dirKey: 'd2', fileName: 'waiting.jsonl', content: asstText(T0), mtimeMs: T0 })
+    store.view()
+    expect(store.trackedSessionCount).toBe(2)
+    // 31 min: both invisible (active expired at 5, waiting at 30) but still within
+    // the prune margin — kept in the Map, nothing dropped early
+    now.t = T0 + 31 * 60_000
+    expect(store.view().rooms).toHaveLength(0)
+    expect(store.trackedSessionCount).toBe(2)
+    // 36 min (> waiting window + margin): both entries dropped for good
+    now.t = T0 + 36 * 60_000
+    store.view()
+    expect(store.trackedSessionCount).toBe(0)
+  })
+  it('never prunes a session that is still live or freshly active', () => {
+    const now = { t: T0 + 36 * 60_000 }
+    const store = new OfficeStore(() => now.t)
+    store.ingest({ dirKey: 'old', fileName: 'old.jsonl', content: asstTool(T0, 'Bash'), mtimeMs: T0 })
+    store.ingest({ dirKey: 'live', fileName: 'live.jsonl', content: asstTool(now.t - 1000, 'Bash'), mtimeMs: now.t - 1000 })
+    const v = store.view()
+    expect(v.rooms).toHaveLength(1)
+    expect(v.rooms[0]!.dirKey).toBe('live')
+    expect(store.trackedSessionCount).toBe(1) // old pruned, live untouched
+    // a pruned folder that comes back gets a fresh room again
+    store.ingest({ dirKey: 'old', fileName: 'new.jsonl', content: asstTool(now.t, 'Bash'), mtimeMs: now.t })
+    expect(store.view().rooms.map(r => r.dirKey)).toEqual(['live', 'old'])
+  })
   it('decodes dirKey when no cwd present', () => {
     const store = new OfficeStore(() => T0 + 1)
     store.ingest({ dirKey: '-Users-y-my-app', fileName: 'a.jsonl',

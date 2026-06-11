@@ -27,6 +27,8 @@ export class Renderer {
   private last = 0
   private skin: Skin | undefined
   private lastFit = ''
+  // the lone sprite who keeps the empty office company (key seeds its actor pick)
+  private emptyChar = new Character('yagents:nobody-home', 'sub', 'waiting', 0, 0)
 
   constructor(private canvas: HTMLCanvasElement, private getPlan: () => FloorPlan) {
     this.ctx = canvas.getContext('2d')!
@@ -90,6 +92,13 @@ export class Renderer {
     ctx.imageSmoothingEnabled = false
     ctx.fillStyle = '#1d1830'
     ctx.fillRect(0, 0, canvas.width, canvas.height)
+    // nobody home: show the friendly empty state instead of a silent void
+    // (waits for leaving characters to finish walking out, then takes over;
+    // reappears/disappears purely from the live plan, so it's fully reactive)
+    if (plan.rooms.length === 0 && this.characters.all().length === 0) {
+      this.drawEmptyState(t)
+      return
+    }
     ctx.save()
     ctx.scale(camera.scale * devicePixelRatio, camera.scale * devicePixelRatio)
     ctx.translate(-camera.x, -camera.y)
@@ -122,14 +131,105 @@ export class Renderer {
           if (skin) skin.drawEffects(ctx, zone, t)
           else drawWorkEffects(ctx, zone.theme, zone.workTx * TILE, zone.workTy * TILE, t, hashString(zone.tableKey) % 4096)
         }
-        if (zone.overflow > 0) {
-          ctx.fillStyle = '#d4a017'
-          ctx.font = '6px monospace'
-          ctx.fillText('+' + zone.overflow + ' more', (zone.tx + zone.tw - 4) * TILE, (zone.ty + zone.th) * TILE - 4)
-        }
       }
     }
     ctx.restore()
+    // labels, overflow tags and the low-zoom crown live in SCREEN space:
+    // constant pixel size no matter how far the camera fits out
+    this.drawScreenChrome(plan)
+  }
+
+  /** First-run / between-sessions screen: a lone loafing sprite snoozing under
+   *  its 'z' (the pack's own idle charm) plus a terminal-flavored hint, all
+   *  centered and pixel-crisp. Drawn every frame from live state, so it
+   *  vanishes the instant a session appears and returns when the office empties. */
+  private drawEmptyState(t: number): void {
+    const { ctx, canvas } = this
+    const dpr = devicePixelRatio
+    const cssW = canvas.width / dpr, cssH = canvas.height / dpr
+    const skin = this.skin?.ready ? this.skin : undefined
+
+    // the sprite dozes a little above the message, pixel-scaled ×3
+    const s = 3
+    this.emptyChar.pose = 'loaf'
+    this.emptyChar.theme = 'office'
+    this.emptyChar.x = (cssW / s / 2) / TILE - 0.5
+    this.emptyChar.y = (cssH / s / 2) / TILE - 2.2
+    ctx.save()
+    ctx.scale(s * dpr, s * dpr)
+    if (skin) skin.drawCharacter(ctx, this.emptyChar, t)
+    else this.drawCharacterFallback(this.emptyChar, t)
+    ctx.restore()
+
+    ctx.save()
+    ctx.scale(dpr, dpr)
+    ctx.textAlign = 'center'
+    const cx = cssW / 2, cy = cssH / 2
+    ctx.font = '13px ui-monospace, Menlo, monospace'
+    ctx.fillStyle = '#d4a017'
+    const headline = 'no agents working right now'
+    ctx.fillText(headline, cx, cy + 6)
+    // blinking terminal cursor after the headline (deterministic from t)
+    if (animFrame(t, 600) === 0) {
+      ctx.fillStyle = '#5a8f5a'
+      ctx.fillRect(Math.floor(cx + ctx.measureText(headline).width / 2 + 5), cy - 4, 7, 12)
+    }
+    ctx.font = '11px ui-monospace, Menlo, monospace'
+    ctx.fillStyle = '#8a7aaa'
+    ctx.fillText("open Claude Code in a project and they'll show up here", cx, cy + 26)
+    ctx.restore()
+  }
+
+  /** Screen-space chrome: room labels, +N overflow tags, and a constant-size
+   *  crown over each main agent when the camera is zoomed out far enough that
+   *  the in-sprite crown becomes illegible. Drawn after the world transform is
+   *  popped so all of it stays readable at any fit zoom. */
+  private drawScreenChrome(plan: FloorPlan): void {
+    const { ctx, camera } = this
+    ctx.save()
+    ctx.scale(devicePixelRatio, devicePixelRatio)
+    ctx.font = '11px ui-monospace, Menlo, monospace'
+    for (const room of plan.rooms) {
+      const p = camera.worldToScreen(room.tx * TILE, room.ty * TILE)
+      const label = './' + room.label
+      const w = Math.ceil(ctx.measureText(label).width)
+      // flat dark badge keeps the label readable on any wall (cream included)
+      ctx.fillStyle = 'rgba(15, 12, 26, 0.82)'
+      ctx.fillRect(Math.floor(p.x) + 3, Math.floor(p.y) + 3, w + 8, 15)
+      ctx.fillStyle = '#fff8ec'
+      ctx.fillText(label, Math.floor(p.x) + 7, Math.floor(p.y) + 14)
+      for (const zone of room.zones) {
+        if (zone.overflow <= 0) continue
+        const tag = '+' + zone.overflow + ' more'
+        const tw = Math.ceil(ctx.measureText(tag).width)
+        const q = camera.worldToScreen((zone.tx + zone.tw) * TILE, (zone.ty + zone.th) * TILE)
+        ctx.fillStyle = 'rgba(15, 12, 26, 0.82)'
+        ctx.fillRect(Math.floor(q.x) - tw - 11, Math.floor(q.y) - 18, tw + 8, 14)
+        ctx.fillStyle = '#d4a017'
+        ctx.fillText(tag, Math.floor(q.x) - tw - 7, Math.floor(q.y) - 7)
+      }
+    }
+    // below ~3× the 6×4px sprite crown is a smudge — overlay a constant-size one
+    if (camera.scale < 3) {
+      for (const c of this.characters.all()) {
+        if (c.kind !== 'main' || c.leaving) continue
+        const p = camera.worldToScreen(c.x * TILE + TILE / 2, c.y * TILE)
+        this.drawScreenCrown(Math.floor(p.x), Math.floor(p.y))
+      }
+    }
+    ctx.restore()
+  }
+
+  /** The main-agent crown at a fixed screen size (2 CSS px per crown pixel),
+   *  dark-silhouetted so the gold pops on cream walls. (cx, cy) = head top. */
+  private drawScreenCrown(cx: number, cy: number): void {
+    const { ctx } = this
+    const u = 2
+    const spikes: [number, number, number, number][] = [[-3, -4, 2, 3], [-1, -5, 2, 4], [1, -4, 2, 3]]
+    ctx.fillStyle = '#0f0c1a'
+    for (const [x, y, w, h] of spikes) ctx.fillRect(cx + x * u - 1, cy + y * u - 1, w * u + 2, h * u + 2)
+    ctx.fillStyle = '#ffd700'
+    for (const [x, y, w, h] of spikes) ctx.fillRect(cx + x * u, cy + y * u, w * u, h * u)
   }
 
   private drawZoneFallback(zone: ZoneBox): void {
@@ -161,18 +261,13 @@ export class Renderer {
     }
   }
 
+  // labels moved to the screen-space pass (drawScreenChrome) so they stay readable at fit zoom
   private drawRoomChrome(room: RoomBox): void {
     const { ctx } = this
     const x = room.tx * TILE, y = room.ty * TILE
     ctx.strokeStyle = '#0f0c1a'
     ctx.lineWidth = 1
     ctx.strokeRect(x + 0.5, y + 0.5, room.tw * TILE - 1, room.th * TILE - 1)
-    ctx.font = '7px monospace'
-    const label = './' + room.label
-    ctx.fillStyle = '#1d1830'
-    ctx.fillText(label, x + 5, y + 12)
-    ctx.fillStyle = '#fff8ec'
-    ctx.fillText(label, x + 4, y + 11)
   }
 
   private drawCharacterFallback(c: Character, t: number): void {
