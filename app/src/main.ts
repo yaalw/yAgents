@@ -40,7 +40,8 @@ async function hasLocalServer(): Promise<boolean> {
 }
 
 async function pickAdapter(): Promise<DataAdapter> {
-  if (new URLSearchParams(location.search).get('demo')) return new DemoAdapter()
+  const demo = new URLSearchParams(location.search).get('demo')
+  if (demo) return new DemoAdapter(1200, parseInt(demo, 10) || 1) // ?demo=N pre-runs N script steps
   if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
     if (await hasLocalServer()) return new LocalServerAdapter()
   }

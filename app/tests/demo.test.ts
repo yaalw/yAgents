@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { DemoAdapter, DEMO_SCRIPT } from '../src/adapters/demo'
 import { OfficeStore } from '../src/state/officeStore'
+import { themeFor } from '../src/render/theme'
 
 describe('DemoAdapter', () => {
   it('script produces a populated office when fully applied', () => {
@@ -15,6 +16,9 @@ describe('DemoAdapter', () => {
       expect(allTables.length).toBeGreaterThanOrEqual(3)
       expect(allTables.some(t => t.subagents.length > 0)).toBe(true)
       expect(allTables.some(t => t.status === 'waiting')).toBe(true)
+      // the diorama shows off every theme
+      const themes = new Set(v.rooms.flatMap(r => r.tables.map(t => themeFor(t.key, r.dirKey))))
+      expect(themes).toEqual(new Set(['office', 'mine', 'farm']))
     })
   })
 })

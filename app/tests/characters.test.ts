@@ -3,7 +3,7 @@ import { CharacterSet } from '../src/render/characters'
 import type { Seat } from '../src/layout/layoutEngine'
 
 const seat = (key: string, tx: number, ty: number): Seat =>
-  ({ agentKey: key, kind: 'main', status: 'typing', tx, ty, tableKey: key })
+  ({ agentKey: key, kind: 'main', status: 'typing', pose: 'work', theme: 'office', tx, ty, tableKey: key })
 
 describe('CharacterSet', () => {
   it('spawns characters at their seat and removes departed ones', () => {

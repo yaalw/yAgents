@@ -81,6 +81,8 @@ export interface ThemeTiles {
   workObject: TileRef[]
   /** 2-4 loafing props for the theme */
   lounge: TileRef[]
+  /** ambient set dressing for the zone's empty right side (up to 2) */
+  deco?: TileRef[]
   /** FARM ONLY: crop growth sprites, sprout → mid → ripe */
   cropStages?: TileRef[]
 }
@@ -99,32 +101,44 @@ export const THEME_TILES: Record<Theme, ThemeTiles> = {
       t('indoor', 22, 8),         // small bordered rug / doormat
       t('rpg', 43, 12),           // bookshelf with colored books
     ],
+    deco: [
+      t('rpg', 45, 12),           // tall bookshelf against the back wall
+      t('indoor', 16, 0),         // potted plant in the far corner
+    ],
   },
   mine: {
     floor: t('rpg', 7, 0),        // gray speckled cave stone
     wall: t('rpg', 38, 18),       // brown rock face with embedded stones
     workObject: [
-      t('rpg', 54, 21),           // big gray boulder
+      t('rpg', 55, 19),           // chunky brown rock pile (pops on the gray floor)
       t('rpg', 42, 11),           // gold ore pile
       t('rpg', 49, 21),           // wooden mine cart full of gold
     ],
     lounge: [
       t('rpg', 47, 17),           // large brown supply crate
       t('rpg', 15, 8),            // campfire (logs + flame)
-      t('rpg', 51, 17),           // glowing lantern
+      t('rpg', 53, 21),           // chopping stump with an axe
+    ],
+    deco: [
+      t('rpg', 54, 19),           // small brown rock pile
+      t('rpg', 54, 20),           // mossy brown rocks
     ],
   },
   farm: {
     floor: t('rpg', 5, 0),        // speckled grass
     wall: t('rpg', 52, 23),       // split-rail wooden fence (transparent bg)
     workObject: [
-      t('rpg', 7, 7), t('rpg', 8, 7),   // tilled dirt plot, 2x2 — top row
-      t('rpg', 7, 8), t('rpg', 8, 8),   //                       bottom row
+      t('rpg', 6, 1), t('rpg', 6, 1),   // tilled dirt plot, 2x2 — solid soil
+      t('rpg', 6, 1), t('rpg', 6, 1),   // squares; crops grow on top
     ],
     lounge: [
-      t('rpg', 53, 16),           // hand water pump (the "well")
-      t('rpg', 53, 20),           // plump grain sack
+      t('rpg', 23, 11),           // fruit tree heavy with red apples
+      t('rpg', 56, 11),           // plump grain sack
       t('rpg', 46, 23),           // fence gate segment
+    ],
+    deco: [
+      t('rpg', 25, 11),           // white wildflower by the fence
+      t('rpg', 24, 11),           // leafy green bush
     ],
     cropStages: [
       t('rpg', 22, 10),           // sprout: tiny green shoots
