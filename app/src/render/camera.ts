@@ -22,7 +22,7 @@ export class Camera {
   zoomAt(sx: number, sy: number, factor: number): void {
     this.userMoved = true
     const anchor = this.screenToWorld(sx, sy)
-    this.scale = Math.min(8, Math.max(0.75, this.scale * factor))
+    this.scale = Math.min(8, Math.max(0.3, this.scale * factor))
     this.x = anchor.x - sx / this.scale
     this.y = anchor.y - sy / this.scale
   }

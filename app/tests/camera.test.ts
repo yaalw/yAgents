@@ -20,12 +20,12 @@ describe('Camera', () => {
     expect(after.y).toBeCloseTo(before.y)
     expect(c.scale).toBe(3) // 2 * 1.5
   })
-  it('clamps scale to [0.75, 8]', () => {
+  it('clamps scale to [0.3, 8]', () => {
     const c = new Camera()
     for (let i = 0; i < 60; i++) c.zoomAt(0, 0, 1.1)
     expect(c.scale).toBe(8)
     for (let i = 0; i < 80; i++) c.zoomAt(0, 0, 0.9)
-    expect(c.scale).toBe(0.75)
+    expect(c.scale).toBe(0.3)
   })
   it('many small steps give fine-grained zoom (no big jumps)', () => {
     const c = new Camera()

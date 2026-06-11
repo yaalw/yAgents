@@ -13,3 +13,14 @@ export function hashString(s: string): number {
   for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619) }
   return h >>> 0
 }
+
+/** Deterministic hash → [0,1) from a few integers. The procedural world's only
+ *  randomness source (terrain, scatter, effects) — NO Math.random anywhere. */
+export function det(a: number, b: number, c: number): number {
+  let h = 2166136261
+  h = Math.imul(h ^ (a | 0), 16777619)
+  h = Math.imul(h ^ (b | 0), 16777619)
+  h = Math.imul(h ^ (c | 0), 16777619)
+  h ^= h >>> 13
+  return ((h >>> 0) % 4096) / 4096
+}

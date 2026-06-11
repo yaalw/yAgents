@@ -1,6 +1,6 @@
 import type { DataAdapter, OfficeView } from './types'
 import { OfficeStore } from './state/officeStore'
-import { layout, type FloorPlan } from './layout/layoutEngine'
+import { layout, type WorldPlan } from './layout/layoutEngine'
 import { Renderer } from './render/renderer'
 import { NinjaSkin } from './render/skins/ninja'
 import { DemoAdapter } from './adapters/demo'
@@ -15,7 +15,7 @@ const startEl = document.getElementById('start')!
 
 const store = new OfficeStore()
 let view: OfficeView = { rooms: [] }
-let plan: FloorPlan = layout(view)
+let plan: WorldPlan = layout(view)
 
 const renderer = new Renderer(canvas, () => plan)
 // sprites are progressive enhancement: flat-color rendering until the skin loads, forever if it 404s
@@ -86,3 +86,20 @@ canvas.addEventListener('wheel', ev => {
 const adapter = await pickAdapter()
 await adapter.start(e => { store.ingest(e); refresh() })
 renderer.start()
+
+// ?zoom=N&focus=i — jump the camera to island i at scale N (shareable close-ups,
+// also the screenshot harness for verifying world detail)
+const params = new URLSearchParams(location.search)
+const zoom = parseFloat(params.get('zoom') ?? '')
+if (!Number.isNaN(zoom)) {
+  const focus = parseInt(params.get('focus') ?? '0', 10) || 0
+  setTimeout(() => {
+    const r = plan.regions[Math.min(Math.max(0, focus), plan.regions.length - 1)]
+    if (!r) return
+    const cam = renderer.camera
+    cam.userMoved = true
+    cam.scale = Math.min(8, Math.max(0.3, zoom))
+    cam.x = (r.anchorTx + 0.5) * 16 - window.innerWidth / cam.scale / 2
+    cam.y = (r.anchorTy + 0.5) * 16 - window.innerHeight / cam.scale / 2
+  }, 1200)
+}

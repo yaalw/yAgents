@@ -3,19 +3,14 @@
 // reproducible and tests can pin exact outputs.
 import type { Theme } from './atlas'
 import { TILE } from '../layout/layoutEngine'
+import { det } from '../util/rng'
+
+// det() moved to util/rng.ts (the terrain generator needs it too); re-exported
+// here so existing imports keep working.
+export { det }
 
 export const SWING_MS = 560        // one full 2-frame work swing (2 × FRAME_MS)
 export const CROP_STAGE_MS = 2600  // how long a crop spends in each growth stage
-
-/** Deterministic hash → [0,1) from a few integers. */
-export function det(a: number, b: number, c: number): number {
-  let h = 2166136261
-  h = Math.imul(h ^ (a | 0), 16777619)
-  h = Math.imul(h ^ (b | 0), 16777619)
-  h = Math.imul(h ^ (c | 0), 16777619)
-  h ^= h >>> 13
-  return ((h >>> 0) % 4096) / 4096
-}
 
 export interface Particle { x: number; y: number; alpha: number; size: number }
 
@@ -66,7 +61,7 @@ export function codeLines(t: number, seed: number, count: number, w: number, h: 
 const SCATTER_SEED: Record<Theme, number> = { office: 11, mine: 23, farm: 37 }
 // roughly 1 in 8 floor tiles gets one tiny detail; the farm runs a little
 // denser because its details are the smallest and its floor the most uniform
-const SCATTER_DENSITY: Record<Theme, number> = { office: 0.16, mine: 0.12, farm: 0.18 }
+const SCATTER_DENSITY: Record<Theme, number> = { office: 0.16, mine: 0.22, farm: 0.18 }
 
 export interface Scatter { kind: 0 | 1 | 2; ox: number; oy: number }
 

@@ -94,6 +94,9 @@ export class Character {
   /** tile the character turns toward once it stops walking (e.g. the work object) */
   faceTx?: number
   faceTy?: number
+  /** where this character entered the world (the island gateway); departures walk back there */
+  exitTx?: number
+  exitTy?: number
   constructor(public key: string, public kind: SeatKind, public status: AgentStatus, tx: number, ty: number) {
     this.x = tx; this.y = ty; this.targetX = tx; this.targetY = ty
   }
@@ -140,22 +143,31 @@ export class CharacterSet {
         existing.targetX = s.tx; existing.targetY = s.ty
         existing.status = s.status; existing.pose = s.pose; existing.theme = s.theme
         existing.faceTx = s.faceTx; existing.faceTy = s.faceTy
+        existing.exitTx = s.enterTx; existing.exitTy = s.enterTy
         existing.refreshFacing()
         existing.leaving = false
       } else {
-        // the very first sync places everyone at their seat (the office was already
-        // running before we looked); later arrivals walk in from the top of their column
-        const c = new Character(s.agentKey, s.kind, s.status, s.tx, this.booted ? -2 : s.ty)
+        // the very first sync places everyone at their seat (the world was already
+        // running before we looked); later arrivals walk in from the island's gateway
+        const spawnX = this.booted ? (s.enterTx ?? s.tx) : s.tx
+        const spawnY = this.booted ? (s.enterTy ?? -2) : s.ty
+        const c = new Character(s.agentKey, s.kind, s.status, spawnX, spawnY)
         c.targetX = s.tx; c.targetY = s.ty
         c.pose = s.pose; c.theme = s.theme
         c.faceTx = s.faceTx; c.faceTy = s.faceTy
+        c.exitTx = s.enterTx; c.exitTy = s.enterTy
         c.refreshFacing() // already-seated characters turn toward their work right away
         this.chars.set(s.agentKey, c)
       }
     }
     if (seats.length > 0) this.booted = true
     for (const [key, c] of this.chars) {
-      if (!seen.has(key) && !c.leaving) { c.leaving = true; c.targetY = -2 }
+      if (!seen.has(key) && !c.leaving) {
+        // departures walk back to the gateway they came in by, then vanish
+        c.leaving = true
+        c.targetX = c.exitTx ?? c.x
+        c.targetY = c.exitTy ?? -2
+      }
     }
   }
 

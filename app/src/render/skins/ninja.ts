@@ -8,8 +8,9 @@
 //   Attack.png 64×16 — one swing frame per facing, same column order
 //   Item.png   16×16 — single down-facing "holds item up" frame
 import type { Skin } from './skin'
-import type { RoomBox, Station } from '../../layout/layoutEngine'
+import type { Region, Station } from '../../layout/layoutEngine'
 import { TILE } from '../../layout/layoutEngine'
+import { packCell, unpackCell, quadrantSources, isInterior } from '../../layout/terrain'
 import type { Character, Facing } from '../characters'
 import { animFrame, poseBodyOffset, FRAME_MS, IDLE_FRAME_MS } from '../characters'
 import type { Theme } from '../atlas'
@@ -38,6 +39,7 @@ export class NinjaSkin implements Skin {
   async load(base = './sprites/ninja/'): Promise<void> {
     const files: [string, string][] = [
       ['field', 'tileset/TilesetField.png'],
+      ['camp', 'tileset/TilesetCamp.png'],
       ['intfloor', 'tileset/TilesetInteriorFloor.png'],
       ['house', 'tileset/TilesetHouse.png'],
       ['relief', 'tileset/TilesetRelief.png'],
@@ -80,99 +82,173 @@ export class NinjaSkin implements Skin {
     this.blit(ctx, key, c * TILE, r * TILE, TILE, TILE, x, y)
   }
 
-  // ── rooms ──────────────────────────────────────────────────────────────
-  // One continuous floor per folder: room-level pass (floor, back wall, wall
-  // decor, the shared lounge) then a station pass per session. Per-station
-  // props vary off the session-key hash so two stations never twin exactly.
-  drawRoom(ctx: CanvasRenderingContext2D, room: RoomBox, t: number): void {
-    if (room.theme === 'office') this.drawOfficeRoom(ctx, room, t)
-    else if (room.theme === 'mine') this.drawMineRoom(ctx, room)
-    else this.drawFarmRoom(ctx, room, t)
-    this.drawRoomFiller(ctx, room, t)
-    // sparse deterministic ground scatter keeps floors lived-in (skip wall row)
-    const x = room.tx * TILE, y = room.ty * TILE
-    for (let i = 0; i < room.tw; i++) {
-      for (let j = 1; j < room.th; j++) {
-        drawGroundScatter(ctx, room.theme, room.tx + i, room.ty + j, x + i * TILE, y + j * TILE)
+  // ── islands ────────────────────────────────────────────────────────────
+  // Each folder is one organic landmass: autotiled themed ground (the field
+  // tileset's 5×3 blob blocks, rendered per 8px quadrant), a theme landmark
+  // (tent / mine entrance / shade tree), one station per session, the shared
+  // lounge, seeded filler props and a signpost at the gateway. Everything in
+  // drawRegionBase is static — the renderer caches it to an offscreen canvas.
+  // The few animated ground details (plants, crops) live in drawRegionLive.
+
+  // ground autotile block per theme: base row within TilesetField
+  private static GROUND_ROW: Record<Theme, number> = { mine: 0, farm: 3, office: 6 }
+
+  drawRegionBase(ctx: CanvasRenderingContext2D, region: Region): void {
+    this.drawShallows(ctx, region)
+    this.drawIslandGround(ctx, region)
+    // sparse deterministic ground scatter keeps the interior lived-in
+    const has = (tx: number, ty: number) => region.cells.has(packCell(tx, ty))
+    for (const p of region.cells) {
+      const { tx, ty } = unpackCell(p)
+      if (!isInterior(has, tx, ty)) continue
+      drawGroundScatter(ctx, region.theme, tx, ty, tx * TILE, ty * TILE)
+    }
+    // static filler props (animated plants render in the live pass)
+    for (const f of this.fillerItems(region)) {
+      const px = f.tx * TILE, py = f.ty * TILE
+      if (f.kind === 'tree') this.blit(ctx, 'nature', 6 * TILE, 8 * TILE, 32, 32, px - 8, py - 16)
+      else if (f.kind === 'bush') this.tile(ctx, 'nature', 1, 10, px, py)
+      else if (f.kind === 'bush2') this.tile(ctx, 'nature', 5, 10, px, py)
+      else if (f.kind === 'rock') this.tile(ctx, 'nature', 18, 9, px, py)
+      else if (f.kind === 'rockLoose') this.blit(ctx, 'fxRockGray', 0, 0, 16, 16, px, py)
+      else if (f.kind === 'stump') this.tile(ctx, 'nature', 4, 8, px, py)
+      else if (f.kind === 'mound') this.blit(ctx, 'fxRock', 0, 0, 16, 16, px, py)
+      // 'plant' → live pass
+    }
+    if (region.theme === 'office') this.drawOfficeRegion(ctx, region)
+    else if (region.theme === 'mine') this.drawMineRegion(ctx, region)
+    else this.drawFarmRegion(ctx, region)
+    this.drawSignpost(ctx, region)
+  }
+
+  drawRegionLive(ctx: CanvasRenderingContext2D, region: Region, t: number): void {
+    const frame = Math.floor(t / 320) % 4
+    if (region.theme === 'office') {
+      // swaying plants: filler picks + the lounge's corner plant
+      for (const f of this.fillerItems(region)) {
+        if (f.kind === 'plant') this.tile(ctx, 'plant', frame, 0, f.tx * TILE, f.ty * TILE)
       }
+      this.tile(ctx, 'plant', frame, 0, region.lounge.tx * TILE, region.lounge.ty * TILE)
+    } else if (region.theme === 'farm') {
+      // growing crop rows on every plot
+      for (const st of region.stations) {
+        this.drawCrops(ctx, st.workTx * TILE, st.workTy * TILE, hashString(st.tableKey), t)
+      }
+    } else {
+      // warm lamp flicker at the mine entrance
+      const lm = region.landmark
+      const glow = 0.05 + 0.04 * animFrame(t, 700, region.seed % 2)
+      ctx.fillStyle = `rgba(255, 184, 90, ${glow.toFixed(3)})`
+      ctx.fillRect(lm.tx * TILE + 4, (lm.ty + 2) * TILE, 3.5 * TILE, 1.8 * TILE)
     }
   }
 
-  /** Sparse mid-size props on the room's free floor (never on a station or the
-   *  lounge) so a grown room doesn't read as an empty sheet. Seeded by the
-   *  absolute tile, so props never move as the room grows. */
-  private drawRoomFiller(ctx: CanvasRenderingContext2D, room: RoomBox, t: number): void {
-    const inRect = (tx: number, ty: number, r: { tx: number; ty: number; tw: number; th: number }) =>
-      tx >= r.tx - 1 && tx < r.tx + r.tw && ty >= r.ty - 1 && ty < r.ty + r.th
-    for (let i = 1; i < room.tw - 1; i++) {
-      for (let j = 2; j < room.th - 1; j++) {
-        const tx = room.tx + i, ty = room.ty + j
-        if (det(tx, ty, 97) > 0.022) continue
-        if (inRect(tx, ty, room.lounge)) continue
-        if (room.stations.some(s => inRect(tx, ty, s))) continue
-        const r = det(tx, ty, 98)
-        const px = tx * TILE, py = ty * TILE
-        if (room.theme === 'office') {
-          if (r < 0.45) this.tile(ctx, 'plant', Math.floor(t / 320) % 4, 0, px, py)        // potted plant
-          else if (r < 0.75) this.blit(ctx, 'house', 30 * TILE, 18 * TILE, 16, 16, px, py) // paper pile
-          else this.tile(ctx, 'house', 21, 9, px, py)                                      // spare stool
-        } else if (room.theme === 'mine') {
-          if (r < 0.55) this.tile(ctx, 'nature', 18, 9, px, py)                            // rock outcrop
-          else this.blit(ctx, 'fxRockGray', 0, 0, 16, 16, px, py)                          // loose rock
-        } else {
-          if (r < 0.55) this.tile(ctx, 'nature', 4, 8, px, py)                             // old stump
-          else this.blit(ctx, 'fxRock', 0, 0, 16, 16, px, py)                              // dirt mound
+  /** 1-tile ring of lighter "shallows" water hugging the coast, so the island
+   *  visibly sits IN the sea rather than floating on a void. */
+  private drawShallows(ctx: CanvasRenderingContext2D, region: Region): void {
+    const has = (tx: number, ty: number) => region.cells.has(packCell(tx, ty))
+    const rim = new Set<number>()
+    for (const p of region.cells) {
+      const { tx, ty } = unpackCell(p)
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          if ((dx || dy) && !has(tx + dx, ty + dy)) rim.add(packCell(tx + dx, ty + dy))
         }
       }
     }
+    ctx.fillStyle = 'rgba(96, 130, 200, 0.13)'
+    for (const p of rim) {
+      const { tx, ty } = unpackCell(p)
+      ctx.fillRect(tx * TILE, ty * TILE, TILE, TILE)
+    }
   }
 
-  private drawOfficeRoom(ctx: CanvasRenderingContext2D, room: RoomBox, t: number): void {
-    const x = room.tx * TILE, y = room.ty * TILE
-    // tatami-tan panel floor with the odd carved motif
-    for (let i = 0; i < room.tw; i++) {
-      for (let j = 0; j < room.th; j++) {
-        const motif = det(room.tx + i, room.ty + j, 71) < 0.07
-        this.tile(ctx, 'intfloor', motif ? 14 : 12, motif ? 5 : 1, x + i * TILE, y + j * TILE)
+  /** Autotiled themed ground over the island's blob mask: interior cells are a
+   *  single center tile; coast cells assemble from four 8×8 quadrants of the
+   *  theme's 5×3 autotile block (see terrain.quadrantSources). */
+  private drawIslandGround(ctx: CanvasRenderingContext2D, region: Region): void {
+    const base = NinjaSkin.GROUND_ROW[region.theme]
+    const has = (tx: number, ty: number) => region.cells.has(packCell(tx, ty))
+    for (const p of region.cells) {
+      const { tx, ty } = unpackCell(p)
+      const x = tx * TILE, y = ty * TILE
+      if (isInterior(has, tx, ty)) { this.tile(ctx, 'field', 1, base + 1, x, y); continue }
+      const quads = quadrantSources(
+        has(tx, ty - 1), has(tx, ty + 1), has(tx + 1, ty), has(tx - 1, ty),
+        has(tx - 1, ty - 1), has(tx + 1, ty - 1), has(tx - 1, ty + 1), has(tx + 1, ty + 1))
+      for (const q of quads) {
+        this.blit(ctx, 'field', q.c * TILE + q.qx * 8, (base + q.r) * TILE + q.qy * 8, 8, 8, x + q.qx * 8, y + q.qy * 8)
       }
-      this.tile(ctx, 'house', 4, 2, x + i * TILE, y) // cream plaster back wall
     }
-    // shoji windows break up the back wall every few tiles
-    for (let i = 2; i < room.tw - 1; i += 8) this.tile(ctx, 'house', 0, 3, x + i * TILE, y)
-    // ── room decor, drawn ONCE per folder (not per session) ──────────────
-    // library table against the wall: cream cloth stacked with books + scroll
-    this.blit(ctx, 'house', 16 * TILE, 16 * TILE, 48, 32, x, y + TILE)
-    this.blit(ctx, 'book', 0, 0, 16, 16, x + 2, y + TILE + 1)
-    this.blit(ctx, 'scroll', 0, 0, 16, 16, x + 16, y + TILE + 2)
-    this.blit(ctx, 'book', 0, 0, 16, 16, x + 30, y + TILE + 1)
-    this.blit(ctx, 'house', 29 * TILE, 18 * TILE, 16, 16, x, y + 3 * TILE) // scroll bucket by the table
-    // hanging banners flank the room's center stretch of wall
-    this.blit(ctx, 'house', 27 * TILE, 20 * TILE, 16, 32, x + 4 * TILE, y)
-    this.blit(ctx, 'house', 24 * TILE, 20 * TILE, 16, 32, x + (room.tw - 5) * TILE, y)
-    this.tile(ctx, 'plant', Math.floor(t / 320) % 4, 0, x + (room.tw - 1) * TILE, y + TILE) // corner plant
-    // wider rooms earn the research desk under the right window + cabinets
-    if (room.tw >= 16) {
-      const dx = x + (room.tw - 3) * TILE
-      this.tile(ctx, 'house', 29, 8, dx, y + TILE)
-      this.tile(ctx, 'house', 30, 8, dx + TILE, y + TILE)
-      this.tile(ctx, 'house', 29, 9, dx, y + 2 * TILE)
-      this.tile(ctx, 'house', 30, 9, dx + TILE, y + 2 * TILE)
-      this.blit(ctx, 'scroll', 0, 0, 16, 16, dx + 1, y + TILE + 1)
-      this.blit(ctx, 'hourglass', 0, 0, 16, 16, dx + TILE + 1, y + TILE)
-      this.tile(ctx, 'house', 25, 19, x + 8 * TILE, y + TILE)              // drawer cabinet
-      this.tile(ctx, 'house', 26, 19, x + (room.tw - 6) * TILE, y + TILE)  // slatted cabinet
+  }
+
+  /** Sparse mid-size props on the island's free interior (never on a station,
+   *  the lounge or the landmark). Seeded by the absolute tile, so props never
+   *  move as the island grows — new ground simply brings new props. */
+  private fillerItems(region: Region): { tx: number; ty: number; kind: 'plant' | 'tree' | 'bush' | 'bush2' | 'rock' | 'rockLoose' | 'stump' | 'mound' }[] {
+    const out: { tx: number; ty: number; kind: 'plant' | 'tree' | 'bush' | 'bush2' | 'rock' | 'rockLoose' | 'stump' | 'mound' }[] = []
+    const has = (tx: number, ty: number) => region.cells.has(packCell(tx, ty))
+    const inRect = (tx: number, ty: number, r: { tx: number; ty: number; tw: number; th: number }) =>
+      tx >= r.tx - 1 && tx < r.tx + r.tw + 1 && ty >= r.ty - 1 && ty < r.ty + r.th + 1
+    const blocked = (tx: number, ty: number) =>
+      inRect(tx, ty, region.lounge) || inRect(tx, ty, region.landmark) ||
+      region.stations.some(s => inRect(tx, ty, s))
+    for (const p of region.cells) {
+      const { tx, ty } = unpackCell(p)
+      if (!isInterior(has, tx, ty) || blocked(tx, ty)) continue
+      // the odd shade tree on grassy islands (needs a clear 2×2)
+      if (region.theme !== 'mine' && det(tx, ty, 96) < 0.016 &&
+          has(tx + 1, ty) && has(tx, ty + 1) && has(tx + 1, ty + 1) &&
+          !blocked(tx + 1, ty) && !blocked(tx, ty + 1) && !blocked(tx + 1, ty + 1)) {
+        out.push({ tx, ty, kind: 'tree' })
+        continue
+      }
+      if (det(tx, ty, 97) > (region.theme === 'mine' ? 0.1 : 0.045)) continue
+      const r = det(tx, ty, 98)
+      if (region.theme === 'office') {
+        out.push({ tx, ty, kind: r < 0.3 ? 'plant' : r < 0.6 ? 'bush' : r < 0.85 ? 'bush2' : 'stump' })
+      } else if (region.theme === 'mine') {
+        out.push({ tx, ty, kind: r < 0.5 ? 'rock' : r < 0.85 ? 'rockLoose' : 'mound' })
+      } else {
+        out.push({ tx, ty, kind: r < 0.4 ? 'stump' : r < 0.75 ? 'bush' : 'mound' })
+      }
     }
-    // storage corner (bottom-right, off the walking lanes)
-    this.blit(ctx, 'house', 18 * TILE, 14 * TILE + 10, 16, 22, x + (room.tw - 1) * TILE, y + (room.th - 3) * TILE - 6) // barrel
-    this.blit(ctx, 'house', 19 * TILE, 14 * TILE, 16, 22, x + (room.tw - 3) * TILE, y + (room.th - 2) * TILE - 6) // apple basket
-    this.blit(ctx, 'house', 20 * TILE, 14 * TILE, 16, 22, x + (room.tw - 2) * TILE, y + (room.th - 2) * TILE - 6) // bread basket
-    this.blit(ctx, 'house', 21 * TILE, 14 * TILE, 16, 22, x + (room.tw - 1) * TILE, y + (room.th - 2) * TILE - 6) // grain sack
+    return out
+  }
+
+  /** The folder signpost at the island's gateway (its coast cell facing the
+   *  world). The label itself renders in screen space so it's always legible. */
+  private drawSignpost(ctx: CanvasRenderingContext2D, region: Region): void {
+    const x = region.gateway.tx * TILE, y = region.gateway.ty * TILE
+    ctx.fillStyle = '#2c1e10' // post shadow/outline
+    ctx.fillRect(x + 6, y - 1, 4, 14)
+    ctx.fillStyle = '#6e4a2a' // the post
+    ctx.fillRect(x + 7, y, 2, 12)
+    ctx.fillStyle = '#2c1e10' // board outline
+    ctx.fillRect(x + 1, y - 1, 14, 9)
+    ctx.fillStyle = '#a9743f' // the board
+    ctx.fillRect(x + 2, y, 12, 7)
+    ctx.fillStyle = '#3c2a16' // carved scratches
+    ctx.fillRect(x + 4, y + 2, 8, 1)
+    ctx.fillRect(x + 4, y + 4, 6, 1)
+  }
+
+  /** Scholar's camp: the big tent landmark, then a rug + desk station per
+   *  session and the shared lounge — a study that lives outdoors. */
+  private drawOfficeRegion(ctx: CanvasRenderingContext2D, region: Region): void {
+    const lm = region.landmark
+    const lx0 = lm.tx * TILE, ly0 = lm.ty * TILE
+    // the scholars' tent (camp tileset), flanked by a lamp and the scroll bucket
+    this.blit(ctx, 'camp', 64, 0, 48, 48, lx0 + 8, ly0 + 8)
+    this.tile(ctx, 'dungeon', 7, 2, lx0 - 8, ly0 + 40)
+    this.blit(ctx, 'house', 29 * TILE, 18 * TILE, 16, 16, lx0 + 58, ly0 + 42)
+    this.blit(ctx, 'book', 0, 0, 16, 16, lx0 + 60, ly0 + 28)
     // ── one scribe station per session ───────────────────────────────────
-    for (const st of room.stations) {
+    for (const st of region.stations) {
       const wx = st.workTx * TILE, wy = st.workTy * TILE
       const h = hashString(st.tableKey)
       // ornate woven rug under desk + scribe (the floor sheet's framed 4×4 panel)
-      this.blit(ctx, 'intfloor', 15 * TILE, 0, 62, 62, wx - TILE + 1, wy + TILE + 1)
+      this.blit(ctx, 'intfloor', 15 * TILE, 0, 62, 62, wx - TILE + 1, wy - 6)
       // the scribe's desk: a sturdy 2×2 workbench with book + scroll on top
       this.tile(ctx, 'house', 29, 8, wx, wy)
       this.tile(ctx, 'house', 30, 8, wx + TILE, wy)
@@ -187,27 +263,40 @@ export class NinjaSkin implements Skin {
       else if (h % 3 === 1) this.blit(ctx, 'book', 0, 0, 16, 16, wx + 3 * TILE + 2, wy + 4)
       else this.blit(ctx, 'house', 29 * TILE, 18 * TILE, 16, 16, wx + 3 * TILE, wy + 2)
     }
-    // the SHARED lounge: swaying plant, stools, fruit table, bucket
-    const lx = room.lounge.tx * TILE, ly = room.lounge.ty * TILE
-    this.tile(ctx, 'plant', Math.floor(t / 320) % 4, 0, lx, ly)
+    // the SHARED lounge: swaying plant (live pass), stools, fruit table, bucket
+    const lx = region.lounge.tx * TILE, ly = region.lounge.ty * TILE
     this.tile(ctx, 'house', 21, 9, lx + TILE, ly)
     this.tile(ctx, 'house', 29, 10, lx + 2 * TILE, ly)
     this.tile(ctx, 'house', 27, 6, lx + 3 * TILE, ly)
     this.tile(ctx, 'house', 21, 9, lx + 4 * TILE, ly)
   }
 
-  private drawMineRoom(ctx: CanvasRenderingContext2D, room: RoomBox): void {
-    const x = room.tx * TILE, y = room.ty * TILE
-    for (let i = 0; i < room.tw; i++) {
-      for (let j = 0; j < room.th; j++) this.tile(ctx, 'intfloor', 17, 14, x + i * TILE, y + j * TILE)
-      this.tile(ctx, 'relief', 9, 1, x + i * TILE, y) // rough rock face
-    }
-    // outcrops scattered along the back wall (seeded by absolute tile)
-    for (let i = 1; i < room.tw - 1; i++) {
-      if (det(room.tx + i, room.ty, 53) < 0.18) this.tile(ctx, 'nature', 18, 9, x + i * TILE, y + TILE)
-    }
+  /** Dig site: a timbered mine entrance landmark, an ore face per session. */
+  private drawMineRegion(ctx: CanvasRenderingContext2D, region: Region): void {
+    const lm = region.landmark
+    const x0 = lm.tx * TILE, y0 = lm.ty * TILE
+    // rocky hill (two mossy boulders) with a dark timbered opening
+    this.blit(ctx, 'nature', 16 * TILE, 8 * TILE, 32, 32, x0 + 4, y0 + 2)
+    this.blit(ctx, 'nature', 16 * TILE, 8 * TILE, 32, 32, x0 + 28, y0 + 6)
+    // the cave mouth: black opening framed by timber posts + lintel
+    const cx = x0 + 20, cy = y0 + 26
+    ctx.fillStyle = '#0d0c14'
+    ctx.fillRect(cx + 2, cy + 4, 16, 12)
+    ctx.fillRect(cx + 4, cy + 1, 12, 4)
+    ctx.fillStyle = '#5a4026' // timber frame
+    ctx.fillRect(cx, cy + 2, 3, 14)
+    ctx.fillRect(cx + 17, cy + 2, 3, 14)
+    ctx.fillRect(cx - 1, cy, 22, 3)
+    ctx.fillStyle = '#3a2814' // frame shadow
+    ctx.fillRect(cx - 1, cy + 3, 1, 11)
+    ctx.fillRect(cx + 20, cy + 3, 1, 11)
+    this.tile(ctx, 'dungeon', 7, 2, cx - 14, cy + 2)  // lamp by the entrance
+    this.blit(ctx, 'fxRockGray', 0, 0, 16, 16, cx + 22, cy + 10) // spoil heap
+    // a cart-track of sleepers from the entrance south a few tiles
+    ctx.fillStyle = 'rgba(60, 42, 22, 0.55)'
+    for (let i = 1; i <= 3; i++) ctx.fillRect(cx + 4, cy + 14 + i * 7, 12, 2)
     // ── one ore face per session ─────────────────────────────────────────
-    for (const st of room.stations) {
+    for (const st of region.stations) {
       const wx = st.workTx * TILE, wy = st.workTy * TILE
       const h = hashString(st.tableKey)
       // the mining face: a big mossy-gray boulder, a gem knocked loose, rubble
@@ -220,37 +309,39 @@ export class NinjaSkin implements Skin {
       else this.blit(ctx, 'gem', 0, 0, 16, 16, wx - 10, wy + 4)
     }
     // the SHARED lounge: supply pot, crate, a lamp to huddle around
-    const lx = room.lounge.tx * TILE, ly = room.lounge.ty * TILE
+    const lx = region.lounge.tx * TILE, ly = region.lounge.ty * TILE
     this.tile(ctx, 'dungeon', 0, 1, lx, ly)
     this.blit(ctx, 'crate', 0, 0, 16, 16, lx + TILE, ly)
     this.tile(ctx, 'dungeon', 7, 2, lx + 4 * TILE, ly)
   }
 
-  private drawFarmRoom(ctx: CanvasRenderingContext2D, room: RoomBox, t: number): void {
-    const x = room.tx * TILE, y = room.ty * TILE
-    for (let i = 0; i < room.tw; i++) {
-      for (let j = 0; j < room.th; j++) this.tile(ctx, 'field', 1, 4, x + i * TILE, y + j * TILE)
-      this.tile(ctx, 'house', 10, 4, x + i * TILE, y) // picket fence along the back
-    }
-    // a second shade tree fills the far corner of wider farms
-    if (room.tw >= 16) this.blit(ctx, 'nature', 6 * TILE, 8 * TILE, 32, 32, x + (room.tw - 3) * TILE, y + TILE - 4)
+  /** Farmstead: shade-tree landmark with the harvest stash, a fenced crop
+   *  plot per session. Crops themselves grow in the live pass. */
+  private drawFarmRegion(ctx: CanvasRenderingContext2D, region: Region): void {
+    const lm = region.landmark
+    const x0 = lm.tx * TILE, y0 = lm.ty * TILE
+    // the big shade tree with the harvest stash beneath it
+    this.blit(ctx, 'nature', 6 * TILE, 8 * TILE, 32, 32, x0 + 12, y0 + 4)
+    this.blit(ctx, 'house', 18 * TILE, 14 * TILE + 10, 16, 22, x0 + 46, y0 + 24) // barrel
+    this.blit(ctx, 'house', 19 * TILE, 14 * TILE, 16, 22, x0 + 2, y0 + 32)       // apple basket
+    this.blit(ctx, 'crate', 0, 0, 16, 16, x0 + 46, y0 + 44)
     // ── one crop plot per session ────────────────────────────────────────
-    for (const st of room.stations) {
+    for (const st of region.stations) {
       const wx = st.workTx * TILE, wy = st.workTy * TILE
+      // a short picket fence shields the plot's north edge
+      for (let i = -1; i <= 2; i++) this.tile(ctx, 'house', 10, 4, wx + i * TILE, wy - TILE)
       // the field tileset ships a freestanding 2×2 tilled block — use it whole
       this.tile(ctx, 'field', 3, 0, wx, wy)
       this.tile(ctx, 'field', 4, 0, wx + TILE, wy)
       this.tile(ctx, 'field', 3, 1, wx, wy + TILE)
       this.tile(ctx, 'field', 4, 1, wx + TILE, wy + TILE)
-      this.drawCrops(ctx, wx, wy, hashString(st.tableKey), t)
       // per-session flavor: a harvest crate or a bush by the plot
       const h = hashString(st.tableKey)
       if (h % 2 === 0) this.blit(ctx, 'crate', 0, 0, 16, 16, wx + 3 * TILE, wy + TILE)
       else this.tile(ctx, 'nature', 4, 8, wx - TILE - 2, wy - 2)
     }
-    // the SHARED lounge: a shade tree, a stump seat, the harvest crate
-    const lx = room.lounge.tx * TILE, ly = room.lounge.ty * TILE
-    this.blit(ctx, 'nature', 6 * TILE, 8 * TILE, 32, 32, lx, ly - TILE)
+    // the SHARED lounge: a stump seat and the lunch crate under the open sky
+    const lx = region.lounge.tx * TILE, ly = region.lounge.ty * TILE
     this.tile(ctx, 'nature', 4, 8, lx + 2 * TILE, ly)
     this.blit(ctx, 'crate', 0, 0, 16, 16, lx + 3 * TILE, ly)
   }

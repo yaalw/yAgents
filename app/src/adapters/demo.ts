@@ -19,6 +19,10 @@ const result = (id: string) => ({ type: 'user', message: { role: 'user', content
 //   -demo-infra/s7.jsonl        → mine   (pickaxe swings at the ore)
 const WEB = '-demo-webshop', API = '-demo-api', INF = '-demo-infra'
 const CWD_WEB = '/demo/webshop', CWD_API = '/demo/api', CWD_INF = '/demo/infra'
+// two late-arriving folders (steps 26+) grow the archipelago to five islands —
+// dirKeys chosen to hash to farm and mine so every theme appears twice-ish
+const CLI = '-demo-cli', DOC = '-demo-docs'
+const CWD_CLI = '/demo/cli', CWD_DOC = '/demo/docs'
 
 export const DEMO_SCRIPT: Step[] = [
   // open strong: all three themes working within the first few beats
@@ -48,6 +52,13 @@ export const DEMO_SCRIPT: Step[] = [
   { atMs: T0 + 22800, dirKey: WEB, fileName: 's3.jsonl', appendLine: asst('s3', CWD_WEB, [tool('f4', 'Write', { file_path: 'test/cart.test.ts' })], T0 + 22800) },
   { atMs: T0 + 24000, dirKey: API, fileName: 's1.jsonl', appendLine: result('task1') },
   { atMs: T0 + 25200, dirKey: INF, fileName: 's7.jsonl', appendLine: asst('s7', CWD_INF, [tool('m3', 'Read', { file_path: 'test/flaky.test.ts' })], T0 + 25200) },
+  // two new folders sail in: the archipelago grows to five islands
+  { atMs: T0 + 26400, dirKey: CLI, fileName: 's8.jsonl', appendLine: asst('s8', CWD_CLI, [tool('c1', 'Edit', { file_path: 'src/args.ts' })], T0 + 26400) },
+  { atMs: T0 + 27600, dirKey: DOC, fileName: 's9.jsonl', appendLine: asst('s9', CWD_DOC, [tool('d1', 'Write', { file_path: 'guide/intro.md' })], T0 + 27600) },
+  { atMs: T0 + 28800, dirKey: CLI, fileName: 's8.jsonl', appendLine: asst('s8', CWD_CLI, [tool('task6', 'Task', { description: 'wire flag parser' })], T0 + 28800) },
+  { atMs: T0 + 30000, dirKey: DOC, fileName: 's10.jsonl', appendLine: asst('s10', CWD_DOC, [tool('d2', 'Bash', { command: 'npm run docs:build' })], T0 + 30000) },
+  { atMs: T0 + 31200, dirKey: CLI, fileName: 's8.jsonl', appendLine: { ...asst('s8', CWD_CLI, [tool('c2', 'Grep', { pattern: 'argv' })], T0 + 31200), isSidechain: true } },
+  { atMs: T0 + 32400, dirKey: DOC, fileName: 's9.jsonl', appendLine: asst('s9', CWD_DOC, [text('outline ready — keep going?')], T0 + 32400) },
 ]
 
 export class DemoAdapter implements DataAdapter {
