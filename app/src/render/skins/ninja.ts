@@ -50,7 +50,6 @@ export class NinjaSkin implements Skin {
       ['crate', 'item/CrateEmpty.png'],
       ['fxRock', 'fx/Rock.png'],
       ['fxRockGray', 'fx/RockGray.png'],
-      ['fxGrass', 'fx/Grass.png'],
       ['fxSpark', 'fx/Spark.png'],
       ['pickaxe', 'tool/Pickaxe.png'],
       ['hoe', 'tool/Hoe.png'],
@@ -153,21 +152,51 @@ export class NinjaSkin implements Skin {
     this.tile(ctx, 'field', 4, 0, wx + TILE, wy)
     this.tile(ctx, 'field', 3, 1, wx, wy + TILE)
     this.tile(ctx, 'field', 4, 1, wx + TILE, wy + TILE)
-    // crops grow per quadrant: sprout → leafy tuft → fat cabbage, then harvest
-    const seed = hashString(zone.tableKey)
-    const STAGES: [number, number][] = [[5, 9], [2, 10], [10, 9]] // sapling → leafy mound → fat cabbage
-    for (let i = 0; i < 4; i++) {
-      const stage = cropStageIndex(t, (seed + i * 3) % 97, STAGES.length)
-      if (stage >= 0) {
-        const [c, r] = STAGES[Math.min(stage, STAGES.length - 1)]!
-        this.tile(ctx, 'nature', c, r, wx + (i % 2) * TILE, wy + Math.floor(i / 2) * TILE - 2)
-      }
-    }
+    this.drawCrops(ctx, wx, wy, hashString(zone.tableKey), t)
     // lounge nook: a shade tree, a stump seat, the harvest crate
     const lx = zone.lounge.tx * TILE, ly = zone.lounge.ty * TILE
     this.blit(ctx, 'nature', 6 * TILE, 8 * TILE, 32, 32, lx, ly - TILE)
     this.tile(ctx, 'nature', 4, 8, lx + 2 * TILE, ly)
     this.blit(ctx, 'crate', 0, 0, 16, 16, lx + 3 * TILE, ly)
+  }
+
+  /** Tidy procedural crop rows across the 2×2 tilled plot. Each of the 4 rows
+   *  is one planting cycling bare dirt → seed mound → sprout → ripe plant on
+   *  the shared crop clock, one phase apart per row, so the plot always reads
+   *  as a staggered harvest. Plants are tiny and ground-hugging (≤3px tall)
+   *  so they sit ON the soil and never bury the farmer working the front edge. */
+  private drawCrops(ctx: CanvasRenderingContext2D, wx: number, wy: number, seed: number, t: number): void {
+    for (let row = 0; row < 4; row++) {
+      const stage = cropStageIndex(t, seed + row, 3)
+      const cy = wy + 6 + row * 7              // plant base line, inside the plot
+      for (let col = 0; col < 4; col++) {
+        const cx = wx + 4 + col * 8            // 4 plants per row, evenly spaced
+        const sway = animFrame(t, 620, row * 3 + col) // gentle 2-frame breeze
+        if (stage === 0) {                     // seed mound poking from the dirt
+          ctx.fillStyle = '#a86a34'
+          ctx.fillRect(cx - 1, cy, 3, 1)
+          ctx.fillStyle = '#7c4a22'
+          ctx.fillRect(cx, cy - 1, 1, 1)
+        } else if (stage === 1) {              // small green sprout
+          ctx.fillStyle = '#4e9434'
+          ctx.fillRect(cx, cy - 1, 1, 2)
+          ctx.fillStyle = '#6cb446'
+          ctx.fillRect(cx - 1 + sway, cy - 1, 1, 1)
+          ctx.fillStyle = '#a8dc6e'
+          ctx.fillRect(cx + sway, cy - 2, 1, 1)
+        } else if (stage === 2) {              // leafy plant with a ripe fruit
+          ctx.fillStyle = 'rgba(60, 30, 8, 0.25)'
+          ctx.fillRect(cx - 1, cy + 1, 3, 1)   // contact shadow seats it on the soil
+          ctx.fillStyle = '#3e8226'
+          ctx.fillRect(cx - 1, cy - 1, 3, 2)
+          ctx.fillStyle = '#6cb446'
+          ctx.fillRect(cx - 1 + sway, cy - 2, 2, 1)
+          ctx.fillStyle = '#e0524c'              // ripe fruit peeking through the leaves
+          ctx.fillRect(cx, cy, 1, 1)
+          ctx.fillRect(cx + (col % 2 ? 1 : -1), cy - 1, 1, 1)
+        }                                      // stage -1: freshly hoed bare row
+      }
+    }
   }
 
   // ── characters ─────────────────────────────────────────────────────────
@@ -286,12 +315,12 @@ export class NinjaSkin implements Skin {
         ctx.fillText('+1', wx + 34, wy + 6 - u * 7)
       }
     } else if (zone.theme === 'farm') {
-      // grass blades and dirt clods kick up where the hoe lands
-      const ox = wx + 16, oy = wy + 26
-      for (const [i, p] of burstParticles(t, seed, 4, 8).entries()) {
+      // small dirt clods kick up where the hoe lands on the plot's front row —
+      // brown only, so nothing green floats over the farmer or the crop rows
+      const ox = wx + 16, oy = wy + 28
+      for (const [i, p] of burstParticles(t, seed, 3, 7).entries()) {
         ctx.globalAlpha = Math.min(1, p.alpha * 1.5)
-        if (i % 2 === 0) this.blit(ctx, 'fxGrass', ((seed + i) % 6) * 12, 0, 12, 13, ox + p.x - 6, oy + p.y - 8)
-        else this.blit(ctx, 'fxRock', (((seed + i) % 4) + 1) * 16, 0, 16, 16, ox + p.x - 8, oy + p.y - 8)
+        this.blit(ctx, 'fxRock', (((seed + i) % 4) + 1) * 16, 0, 16, 16, ox + p.x - 8, oy + p.y - 8)
       }
       ctx.globalAlpha = 1
     } else {
