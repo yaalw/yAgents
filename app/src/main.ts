@@ -72,7 +72,10 @@ window.addEventListener('mousemove', ev => {
 window.addEventListener('mouseup', () => { dragging = false; canvas.classList.remove('dragging') })
 canvas.addEventListener('wheel', ev => {
   ev.preventDefault()
-  renderer.camera.zoomAt(ev.clientX, ev.clientY, ev.deltaY < 0 ? 1 : -1)
+  // smooth proportional zoom toward the cursor; small per-tick factor = fine control
+  // (trackpad pinch arrives as ctrlKey wheel events with smaller deltas)
+  const factor = Math.exp(-ev.deltaY * 0.0015)
+  renderer.camera.zoomAt(ev.clientX, ev.clientY, factor)
 }, { passive: false })
 
 const adapter = await pickAdapter()

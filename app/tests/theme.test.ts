@@ -15,10 +15,16 @@ describe('themeFor', () => {
       expect(themeFor(key, 'dir')).toBe(t)
     }
   })
-  it('seeds by zone key under zone scope', () => {
-    if (THEME_SCOPE === 'zone') {
-      expect(themeFor('same', 'd1')).toBe(themeFor('same', 'd2'))
+  it('scopes themes per folder: every zone sharing a dirKey gets the same theme', () => {
+    expect(THEME_SCOPE).toBe('room')
+    for (const dir of ['-demo-webshop', '-demo-api', '-demo-infra', 'x']) {
+      const themes = new Set(['s1', 's2', 's3', 's4', 's5'].map(k => themeFor(dir + '/' + k, dir)))
+      expect(themes.size).toBe(1)
     }
+  })
+  it('different folders can land different themes (all three reachable)', () => {
+    const themes = new Set(['-demo-api', '-demo-infra', '-demo-webshop'].map(d => themeFor('zone', d)))
+    expect(themes).toEqual(new Set(['office', 'mine', 'farm']))
   })
 })
 

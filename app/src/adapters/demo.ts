@@ -11,37 +11,43 @@ const tool = (id: string, name: string, input: object = {}) => ({ type: 'tool_us
 const text = (s: string) => ({ type: 'text', text: s })
 const result = (id: string) => ({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: id }] } })
 
-// The demo diorama. Session keys are chosen so themeFor() lands all three themes:
-//   -demo-webshop/s3.jsonl → office (typing at the terminal, subagents join)
-//   -demo-webshop/s2.jsonl → mine   (pickaxe swings at the ore)
-//   -demo-api/s1.jsonl     → farm   (hoeing the plot, crops grow)
-//   -demo-api/s5.jsonl     → mine   (waits forever → loafs by the campfire)
-const WEB = '-demo-webshop', API = '-demo-api'
-const CWD_WEB = '/demo/webshop', CWD_API = '/demo/api'
+// The demo diorama. Themes are per FOLDER (see theme.ts), so the three dirKeys
+// are chosen to hash to all three themes, and stacked sessions grow a bigger
+// themed world inside their folder:
+//   -demo-api/{s1,s5}.jsonl     → office (two stacked study zones; s1 spawns subagents)
+//   -demo-webshop/{s3,s2}.jsonl → farm   (two stacked field zones; s2 loafs by the tree)
+//   -demo-infra/s7.jsonl        → mine   (pickaxe swings at the ore)
+const WEB = '-demo-webshop', API = '-demo-api', INF = '-demo-infra'
+const CWD_WEB = '/demo/webshop', CWD_API = '/demo/api', CWD_INF = '/demo/infra'
 
 export const DEMO_SCRIPT: Step[] = [
   // open strong: all three themes working within the first few beats
-  { atMs: T0, dirKey: WEB, fileName: 's3.jsonl', appendLine: asst('s3', CWD_WEB, [tool('w1', 'Edit', { file_path: 'src/cart.ts' })], T0) },
-  { atMs: T0 + 1200, dirKey: WEB, fileName: 's2.jsonl', appendLine: asst('s2', CWD_WEB, [tool('m1', 'Bash', { command: 'npm test' })], T0 + 1200) },
-  { atMs: T0 + 2400, dirKey: API, fileName: 's1.jsonl', appendLine: asst('s1', CWD_API, [tool('f1', 'Write', { file_path: 'src/limiter.ts' })], T0 + 2400) },
-  { atMs: T0 + 3600, dirKey: API, fileName: 's5.jsonl', appendLine: asst('s5', CWD_API, [text('ready when you are — what should I tackle?')], T0 + 3600) },
-  // subagents spawn into the office zone and help at the same desk
-  { atMs: T0 + 4800, dirKey: WEB, fileName: 's3.jsonl', appendLine: asst('s3', CWD_WEB, [tool('task1', 'Task', { description: 'explore checkout flow' })], T0 + 4800) },
-  { atMs: T0 + 6000, dirKey: WEB, fileName: 's3.jsonl', appendLine: { ...asst('s3', CWD_WEB, [tool('st1', 'Grep', { pattern: 'checkout' })], T0 + 6000), isSidechain: true } },
-  // the miner finishes a run and loafs in the nook for a while
-  { atMs: T0 + 7200, dirKey: WEB, fileName: 's2.jsonl', appendLine: asst('s2', CWD_WEB, [text('tests green — push it?')], T0 + 7200) },
-  { atMs: T0 + 8400, dirKey: API, fileName: 's1.jsonl', appendLine: asst('s1', CWD_API, [tool('f2', 'Bash', { command: 'npm run deploy' })], T0 + 8400) },
-  { atMs: T0 + 9600, dirKey: WEB, fileName: 's3.jsonl', appendLine: asst('s3', CWD_WEB, [tool('task2', 'Task', { description: 'audit cart math' })], T0 + 9600) },
-  { atMs: T0 + 10800, dirKey: WEB, fileName: 's3.jsonl', appendLine: asst('s3', CWD_WEB, [tool('w2', 'Edit', { file_path: 'src/checkout.ts' })], T0 + 10800) },
-  // back to the rock
-  { atMs: T0 + 12000, dirKey: WEB, fileName: 's2.jsonl', appendLine: asst('s2', CWD_WEB, [tool('m2', 'Bash', { command: 'git push' })], T0 + 12000) },
-  // the farmer waits on input → walks to the hay nook
-  { atMs: T0 + 13200, dirKey: API, fileName: 's1.jsonl', appendLine: asst('s1', CWD_API, [text('deployed! want a rate-limit dashboard too?')], T0 + 13200) },
-  { atMs: T0 + 14400, dirKey: WEB, fileName: 's3.jsonl', appendLine: { ...asst('s3', CWD_WEB, [tool('st2', 'Read', { file_path: 'src/cart.ts' })], T0 + 14400), isSidechain: true } },
-  { atMs: T0 + 15600, dirKey: WEB, fileName: 's3.jsonl', appendLine: result('task1') },
-  { atMs: T0 + 16800, dirKey: WEB, fileName: 's2.jsonl', appendLine: asst('s2', CWD_WEB, [tool('m3', 'Read', { file_path: 'test/flaky.test.ts' })], T0 + 16800) },
-  { atMs: T0 + 18000, dirKey: API, fileName: 's1.jsonl', appendLine: asst('s1', CWD_API, [tool('f3', 'Edit', { file_path: 'src/limiter.ts' })], T0 + 18000) },
-  { atMs: T0 + 19200, dirKey: WEB, fileName: 's3.jsonl', appendLine: asst('s3', CWD_WEB, [tool('w3', 'Write', { file_path: 'test/cart.test.ts' })], T0 + 19200) },
+  { atMs: T0, dirKey: API, fileName: 's1.jsonl', appendLine: asst('s1', CWD_API, [tool('w1', 'Edit', { file_path: 'src/limiter.ts' })], T0) },
+  { atMs: T0 + 1200, dirKey: WEB, fileName: 's3.jsonl', appendLine: asst('s3', CWD_WEB, [tool('f1', 'Edit', { file_path: 'src/cart.ts' })], T0 + 1200) },
+  { atMs: T0 + 2400, dirKey: INF, fileName: 's7.jsonl', appendLine: asst('s7', CWD_INF, [tool('m1', 'Bash', { command: 'npm test' })], T0 + 2400) },
+  // second sessions stack into their folder: the study and the field grow
+  { atMs: T0 + 3600, dirKey: API, fileName: 's5.jsonl', appendLine: asst('s5', CWD_API, [tool('w2', 'Write', { file_path: 'docs/rate-limits.md' })], T0 + 3600) },
+  { atMs: T0 + 4800, dirKey: API, fileName: 's1.jsonl', appendLine: asst('s1', CWD_API, [tool('task1', 'Task', { description: 'audit auth flow' })], T0 + 4800) },
+  { atMs: T0 + 6000, dirKey: WEB, fileName: 's2.jsonl', appendLine: asst('s2', CWD_WEB, [tool('f2', 'Bash', { command: 'npm run build' })], T0 + 6000) },
+  // helpers fan out across every theme
+  { atMs: T0 + 7200, dirKey: INF, fileName: 's7.jsonl', appendLine: asst('s7', CWD_INF, [tool('task2', 'Task', { description: 'profile hot path' })], T0 + 7200) },
+  { atMs: T0 + 8400, dirKey: API, fileName: 's1.jsonl', appendLine: asst('s1', CWD_API, [tool('task3', 'Task', { description: 'sweep TODOs' })], T0 + 8400) },
+  { atMs: T0 + 9600, dirKey: WEB, fileName: 's3.jsonl', appendLine: asst('s3', CWD_WEB, [tool('task4', 'Task', { description: 'seed fixtures' })], T0 + 9600) },
+  { atMs: T0 + 10800, dirKey: INF, fileName: 's7.jsonl', appendLine: { ...asst('s7', CWD_INF, [tool('st1', 'Grep', { pattern: 'alloc' })], T0 + 10800), isSidechain: true } },
+  { atMs: T0 + 12000, dirKey: API, fileName: 's1.jsonl', appendLine: asst('s1', CWD_API, [tool('task5', 'Task', { description: 'tighten types' })], T0 + 12000) },
+  { atMs: T0 + 13200, dirKey: API, fileName: 's1.jsonl', appendLine: { ...asst('s1', CWD_API, [tool('st2', 'Grep', { pattern: 'authorize' })], T0 + 13200), isSidechain: true } },
+  // the builder finishes a run and loafs under the shade tree
+  { atMs: T0 + 14400, dirKey: WEB, fileName: 's2.jsonl', appendLine: asst('s2', CWD_WEB, [text('build green — ship it?')], T0 + 14400) },
+  { atMs: T0 + 15600, dirKey: API, fileName: 's1.jsonl', appendLine: asst('s1', CWD_API, [tool('w3', 'Edit', { file_path: 'src/auth.ts' })], T0 + 15600) },
+  { atMs: T0 + 16800, dirKey: INF, fileName: 's7.jsonl', appendLine: asst('s7', CWD_INF, [tool('m2', 'Bash', { command: 'git push' })], T0 + 16800) },
+  { atMs: T0 + 18000, dirKey: WEB, fileName: 's3.jsonl', appendLine: asst('s3', CWD_WEB, [tool('f3', 'Edit', { file_path: 'src/checkout.ts' })], T0 + 18000) },
+  // the doc scribe waits on input → wanders to the lounge nook
+  { atMs: T0 + 19200, dirKey: API, fileName: 's5.jsonl', appendLine: asst('s5', CWD_API, [text('docs drafted — want a review?')], T0 + 19200) },
+  { atMs: T0 + 20400, dirKey: API, fileName: 's1.jsonl', appendLine: { ...asst('s1', CWD_API, [tool('st3', 'Read', { file_path: 'src/auth.ts' })], T0 + 20400), isSidechain: true } },
+  { atMs: T0 + 21600, dirKey: INF, fileName: 's7.jsonl', appendLine: result('task2') },
+  { atMs: T0 + 22800, dirKey: WEB, fileName: 's3.jsonl', appendLine: asst('s3', CWD_WEB, [tool('f4', 'Write', { file_path: 'test/cart.test.ts' })], T0 + 22800) },
+  { atMs: T0 + 24000, dirKey: API, fileName: 's1.jsonl', appendLine: result('task1') },
+  { atMs: T0 + 25200, dirKey: INF, fileName: 's7.jsonl', appendLine: asst('s7', CWD_INF, [tool('m3', 'Read', { file_path: 'test/flaky.test.ts' })], T0 + 25200) },
 ]
 
 export class DemoAdapter implements DataAdapter {

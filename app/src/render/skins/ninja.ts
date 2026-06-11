@@ -23,9 +23,9 @@ const FACING_COL: Record<Facing, number> = { down: 0, up: 1, left: 2, right: 3 }
 // Theme casting: who shows up for which kind of work. Mains are fixed per
 // theme (plus the gold crown); subagents pick from the pool by key hash.
 const CAST: Record<Theme, { main: string; subs: string[] }> = {
-  mine: { main: 'Caveman', subs: ['Caveman', 'Cavegirl', 'Knight'] },
-  farm: { main: 'ManGreen', subs: ['Boy', 'Hunter', 'Cavegirl', 'ManGreen'] },
-  office: { main: 'Master', subs: ['Inspector', 'Monk', 'Boy', 'Knight'] },
+  mine: { main: 'Caveman', subs: ['Cavegirl', 'Knight', 'NinjaGray', 'Skeleton', 'Monkey'] },
+  farm: { main: 'ManGreen', subs: ['Boy', 'Hunter', 'Villager', 'Villager2', 'Pig', 'GreenPig'] },
+  office: { main: 'Master', subs: ['Inspector', 'Monk', 'Noble', 'OldMan', 'Sultan', 'Princess'] },
 }
 const ALL_ACTORS = [...new Set(Object.values(CAST).flatMap(c => [c.main, ...c.subs]))]
 const ANIMS = ['Walk', 'Idle', 'Attack', 'Item'] as const
@@ -48,6 +48,7 @@ export class NinjaSkin implements Skin {
       ['scroll', 'item/Scroll.png'],
       ['gem', 'item/Gem.png'],
       ['crate', 'item/CrateEmpty.png'],
+      ['hourglass', 'item/Hourglass.png'],
       ['fxRock', 'fx/Rock.png'],
       ['fxRockGray', 'fx/RockGray.png'],
       ['fxSpark', 'fx/Spark.png'],
@@ -105,6 +106,28 @@ export class NinjaSkin implements Skin {
     // shoji windows break up the back wall
     this.tile(ctx, 'house', 0, 3, x + 2 * TILE, y)
     this.tile(ctx, 'house', 0, 3, x + 10 * TILE, y)
+    // an ornate woven rug under the desk + scribe's spot anchors the room
+    // (the floor sheet's complete framed 4×4 panel, 62px with its border)
+    this.blit(ctx, 'intfloor', 15 * TILE, 0, 62, 62, x + 4 * TILE + 1, y + 3 * TILE + 1)
+    // ── back-wall study lineup (left → right) ────────────────────────────
+    // library table: cream cloth table stacked with books and a scroll
+    this.blit(ctx, 'house', 16 * TILE, 16 * TILE, 48, 32, x, y + TILE)
+    this.blit(ctx, 'book', 0, 0, 16, 16, x + 2, y + TILE + 1)
+    this.blit(ctx, 'scroll', 0, 0, 16, 16, x + 16, y + TILE + 2)
+    this.blit(ctx, 'book', 0, 0, 16, 16, x + 30, y + TILE + 1)
+    this.tile(ctx, 'house', 25, 19, x + 3 * TILE, y + TILE)  // drawer cabinet
+    this.tile(ctx, 'house', 26, 19, x + 9 * TILE, y + TILE)  // slatted cabinet
+    // hanging banners flank the desk; warm lamps light the work
+    this.blit(ctx, 'house', 27 * TILE, 20 * TILE, 16, 32, x + 4 * TILE, y)
+    this.blit(ctx, 'house', 24 * TILE, 20 * TILE, 16, 32, x + 8 * TILE, y)
+    // the second desk: another workbench under the right window, mid-research
+    this.tile(ctx, 'house', 29, 8, x + 10 * TILE, y + TILE)
+    this.tile(ctx, 'house', 30, 8, x + 11 * TILE, y + TILE)
+    this.tile(ctx, 'house', 29, 9, x + 10 * TILE, y + 2 * TILE)
+    this.tile(ctx, 'house', 30, 9, x + 11 * TILE, y + 2 * TILE)
+    this.blit(ctx, 'scroll', 0, 0, 16, 16, x + 10 * TILE + 1, y + TILE + 1)
+    this.blit(ctx, 'hourglass', 0, 0, 16, 16, x + 11 * TILE + 1, y + TILE)
+    this.tile(ctx, 'plant', Math.floor(t / 320) % 4, 0, x + 12 * TILE, y + TILE) // corner plant
     // the scribe's desk: a sturdy 2×2 workbench with book + scroll on top
     const wx = zone.workTx * TILE, wy = zone.workTy * TILE
     this.tile(ctx, 'house', 29, 8, wx, wy)
@@ -113,6 +136,15 @@ export class NinjaSkin implements Skin {
     this.tile(ctx, 'house', 30, 9, wx + TILE, wy + TILE)
     this.blit(ctx, 'book', 0, 0, 16, 16, wx - 1, wy - 1)
     this.blit(ctx, 'scroll', 0, 0, 16, 16, wx + 17, wy)
+    this.tile(ctx, 'dungeon', 7, 2, wx - TILE, wy)        // warm orb lamps flank the desk
+    this.tile(ctx, 'dungeon', 7, 2, wx + 2 * TILE, wy)
+    this.blit(ctx, 'house', 30 * TILE, 18 * TILE, 16, 16, wx + 3 * TILE, wy + 2) // paper pile
+    // ── storage corner (bottom-right, off the walking lanes) ─────────────
+    this.blit(ctx, 'house', 18 * TILE, 14 * TILE + 10, 16, 22, x + 12 * TILE, y + 6 * TILE - 6) // barrel
+    this.blit(ctx, 'house', 19 * TILE, 14 * TILE, 16, 22, x + 10 * TILE, y + 7 * TILE - 6) // apple basket
+    this.blit(ctx, 'house', 20 * TILE, 14 * TILE, 16, 22, x + 11 * TILE, y + 7 * TILE - 6) // bread basket
+    this.blit(ctx, 'house', 21 * TILE, 14 * TILE, 16, 22, x + 12 * TILE, y + 7 * TILE - 6) // grain sack
+    this.blit(ctx, 'house', 29 * TILE, 18 * TILE, 16, 16, x, y + 3 * TILE) // scroll bucket by the table
     // lounge nook: swaying plant, stool, fruit table, bucket
     const lx = zone.lounge.tx * TILE, ly = zone.lounge.ty * TILE
     this.tile(ctx, 'plant', Math.floor(t / 320) % 4, 0, lx, ly)

@@ -2,10 +2,11 @@ import type { Theme } from './atlas'
 import type { AgentStatus } from '../types'
 import { hashString } from '../util/rng'
 
-// Each work-zone is themed independently and stably (seeded by the session key),
-// so a zone keeps its identity across renders. Flip THEME_SCOPE to 'room' to make
-// a whole folder-room share one theme (seed by dirKey) instead.
-export const THEME_SCOPE: 'zone' | 'room' = 'zone'
+// A folder-room picks ONE theme (seeded by its dirKey) and every session-zone
+// inside shares it, so stacking sessions grows "a bigger study / mine / farm"
+// rather than a patchwork. Flip THEME_SCOPE to 'zone' to theme each zone
+// independently (seeded by the session key) instead.
+export const THEME_SCOPE: 'zone' | 'room' = 'room'
 
 const THEMES: Theme[] = ['office', 'mine', 'farm']
 

@@ -16,10 +16,13 @@ export class Camera {
     this.x -= dxScreen / this.scale
     this.y -= dyScreen / this.scale
   }
-  zoomAt(sx: number, sy: number, dir: 1 | -1): void {
+  /** Multiply the zoom by `factor` (e.g. 1.05 in, 0.95 out) while keeping the world
+   *  point under (sx,sy) fixed. Fractional scale gives smooth, fine-grained control;
+   *  the renderer samples nearest-neighbour so pixels stay crisp. */
+  zoomAt(sx: number, sy: number, factor: number): void {
     this.userMoved = true
     const anchor = this.screenToWorld(sx, sy)
-    this.scale = Math.min(6, Math.max(1, this.scale + dir))
+    this.scale = Math.min(8, Math.max(0.75, this.scale * factor))
     this.x = anchor.x - sx / this.scale
     this.y = anchor.y - sy / this.scale
   }
