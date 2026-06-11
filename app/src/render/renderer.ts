@@ -1,4 +1,4 @@
-import type { FloorPlan, RoomBox, ZoneBox } from '../layout/layoutEngine'
+import type { FloorPlan, RoomBox } from '../layout/layoutEngine'
 import { TILE } from '../layout/layoutEngine'
 import { Camera } from './camera'
 import { CharacterSet, Character, animFrame, poseBodyOffset, FRAME_MS, IDLE_FRAME_MS } from './characters'
@@ -103,19 +103,14 @@ export class Renderer {
     ctx.scale(camera.scale * devicePixelRatio, camera.scale * devicePixelRatio)
     ctx.translate(-camera.x, -camera.y)
 
-    // which zones have someone actually doing the work right now?
+    // which stations have someone actually doing the work right now?
     const working = new Set<string>()
     for (const s of plan.seats) if (s.pose === 'work') working.add(s.tableKey)
 
     for (const room of plan.rooms) {
-      for (const zone of room.zones) {
-        if (skin) skin.drawZone(ctx, zone, t)
-        else this.drawZoneFallback(zone)
-        // crisp zone edge
-        ctx.strokeStyle = '#1d1830'
-        ctx.lineWidth = 1
-        ctx.strokeRect(zone.tx * TILE + 0.5, zone.ty * TILE + 0.5, zone.tw * TILE - 1, zone.th * TILE - 1)
-      }
+      // ONE continuous floor per folder — no internal seams between sessions
+      if (skin) skin.drawRoom(ctx, room, t)
+      else this.drawRoomFallback(room)
       this.drawRoomChrome(room)
     }
     // painter's order: lower characters draw over higher ones
@@ -124,12 +119,12 @@ export class Renderer {
       if (skin) skin.drawCharacter(ctx, c, t)
       else this.drawCharacterFallback(c, t)
     }
-    // effects float above everything in their zone
+    // effects float above everything at their station
     for (const room of plan.rooms) {
-      for (const zone of room.zones) {
-        if (working.has(zone.tableKey)) {
-          if (skin) skin.drawEffects(ctx, zone, t)
-          else drawWorkEffects(ctx, zone.theme, zone.workTx * TILE, zone.workTy * TILE, t, hashString(zone.tableKey) % 4096)
+      for (const st of room.stations) {
+        if (working.has(st.tableKey)) {
+          if (skin) skin.drawEffects(ctx, st, t)
+          else drawWorkEffects(ctx, st.theme, st.workTx * TILE, st.workTy * TILE, t, hashString(st.tableKey) % 4096)
         }
       }
     }
@@ -198,11 +193,11 @@ export class Renderer {
       ctx.fillRect(Math.floor(p.x) + 3, Math.floor(p.y) + 3, w + 8, 15)
       ctx.fillStyle = '#fff8ec'
       ctx.fillText(label, Math.floor(p.x) + 7, Math.floor(p.y) + 14)
-      for (const zone of room.zones) {
-        if (zone.overflow <= 0) continue
-        const tag = '+' + zone.overflow + ' more'
+      for (const st of room.stations) {
+        if (st.overflow <= 0) continue
+        const tag = '+' + st.overflow + ' more'
         const tw = Math.ceil(ctx.measureText(tag).width)
-        const q = camera.worldToScreen((zone.tx + zone.tw) * TILE, (zone.ty + zone.th) * TILE)
+        const q = camera.worldToScreen((st.tx + st.tw) * TILE, (st.ty + st.th) * TILE)
         ctx.fillStyle = 'rgba(15, 12, 26, 0.82)'
         ctx.fillRect(Math.floor(q.x) - tw - 11, Math.floor(q.y) - 18, tw + 8, 14)
         ctx.fillStyle = '#d4a017'
@@ -232,32 +227,34 @@ export class Renderer {
     for (const [x, y, w, h] of spikes) ctx.fillRect(cx + x * u, cy + y * u, w * u, h * u)
   }
 
-  private drawZoneFallback(zone: ZoneBox): void {
+  private drawRoomFallback(room: RoomBox): void {
     const { ctx } = this
-    const x = zone.tx * TILE, y = zone.ty * TILE
-    const tint = FALLBACK_TINT[zone.theme]
+    const x = room.tx * TILE, y = room.ty * TILE
+    const tint = FALLBACK_TINT[room.theme]
     ctx.fillStyle = tint.floor
-    ctx.fillRect(x, y, zone.tw * TILE, zone.th * TILE)
+    ctx.fillRect(x, y, room.tw * TILE, room.th * TILE)
     ctx.fillStyle = tint.wall
-    ctx.fillRect(x, y, zone.tw * TILE, TILE)
+    ctx.fillRect(x, y, room.tw * TILE, TILE)
     ctx.fillStyle = tint.nook
-    ctx.fillRect(zone.lounge.tx * TILE, zone.lounge.ty * TILE, zone.lounge.tw * TILE, zone.lounge.th * TILE)
-    const wx = zone.workTx * TILE, wy = zone.workTy * TILE
-    if (zone.theme === 'office') {
-      ctx.fillStyle = '#222'
-      ctx.fillRect(wx, wy + 4, TILE * 2 - 4, 12)
-      ctx.fillStyle = '#7dff9a'
-      ctx.fillRect(wx + TILE + 2, wy + 6, 8, 6)
-    } else if (zone.theme === 'mine') {
-      ctx.fillStyle = '#6b6b76'
-      ctx.fillRect(wx + 2, wy + 4, 12, 12)
-      ctx.fillStyle = '#d4a017'
-      ctx.fillRect(wx + TILE + 4, wy + 8, 6, 6)
-    } else {
-      ctx.fillStyle = '#5e4226'
-      ctx.fillRect(wx, wy, TILE * 2, TILE * 2)
-      ctx.fillStyle = '#4a3017'
-      for (let i = 0; i < 4; i++) ctx.fillRect(wx + 2 + (i % 2) * TILE, wy + 4 + Math.floor(i / 2) * TILE, 12, 3)
+    ctx.fillRect(room.lounge.tx * TILE, room.lounge.ty * TILE, room.lounge.tw * TILE, room.lounge.th * TILE)
+    for (const st of room.stations) {
+      const wx = st.workTx * TILE, wy = st.workTy * TILE
+      if (st.theme === 'office') {
+        ctx.fillStyle = '#222'
+        ctx.fillRect(wx, wy + 4, TILE * 2 - 4, 12)
+        ctx.fillStyle = '#7dff9a'
+        ctx.fillRect(wx + TILE + 2, wy + 6, 8, 6)
+      } else if (st.theme === 'mine') {
+        ctx.fillStyle = '#6b6b76'
+        ctx.fillRect(wx + 2, wy + 4, 12, 12)
+        ctx.fillStyle = '#d4a017'
+        ctx.fillRect(wx + TILE + 4, wy + 8, 6, 6)
+      } else {
+        ctx.fillStyle = '#5e4226'
+        ctx.fillRect(wx, wy, TILE * 2, TILE * 2)
+        ctx.fillStyle = '#4a3017'
+        for (let i = 0; i < 4; i++) ctx.fillRect(wx + 2 + (i % 2) * TILE, wy + 4 + Math.floor(i / 2) * TILE, 12, 3)
+      }
     }
   }
 
