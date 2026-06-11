@@ -1,8 +1,8 @@
 # yAgents 👑🤖
 
-A live pixel-art office for your Claude Code agents.
+A live pixel-art world for your Claude Code agents.
 
-Every **folder** Claude Code is opened in is a **room**. Every **session** is a **table** — the main agent sits at the head (gold, crowned), and the **subagents** it spawns take the seats around it. Agents type, read, run commands and think; when one is **waiting for your input it walks to the kitchen for a coffee** ☕.
+Every **folder** Claude Code is opened in is a **room**. Every **session** is a **work-zone**, themed at random as an **office**, a **mine**, or a **farm** 👑⛏️🌾. The crowned main agent works at the zone's work object (a computer, an ore vein, a crop field); the **subagents** it spawns join the same job and help; and when an agent is **waiting for your input it wanders off to loaf** in the zone's lounge nook. They type, mine, and till with real little animations, so you can watch your agent workflows come alive.
 
 ## Use it
 
@@ -19,6 +19,6 @@ node server/src/index.js   # → http://localhost:4017
 
 ## How it works
 
-Adapters read Claude Code's JSONL transcripts (`~/.claude/projects/**/*.jsonl`) — via the File System Access API (hosted) or a chokidar→WebSocket watcher (local) — and feed a shared pipeline: parser → session state machine → office store → layout engine → canvas renderer. Hierarchy, liveness rules and design: see [`docs/superpowers/specs/2026-06-04-yagents-design.md`](docs/superpowers/specs/2026-06-04-yagents-design.md).
+Adapters read Claude Code's JSONL transcripts (`~/.claude/projects/**/*.jsonl`) — via the File System Access API (hosted) or a chokidar→WebSocket watcher (local) — and feed a shared pipeline: parser → session state machine → office store → layout engine → canvas renderer. Original design: [`docs/superpowers/specs/2026-06-04-yagents-design.md`](docs/superpowers/specs/2026-06-04-yagents-design.md). The themed work-zones rework: [`docs/superpowers/specs/2026-06-11-yagents-v2-workzones-design.md`](docs/superpowers/specs/2026-06-11-yagents-v2-workzones-design.md).
 
-Inspired by [pixel-agents](https://github.com/pablodelucca/pixel-agents) — rebuilt around hierarchy: rooms per folder, a table per session, subagents reporting to their main agent.
+Sprites are CC0 by [Kenney](https://kenney.nl). Inspired by [pixel-agents](https://github.com/pablodelucca/pixel-agents) — rebuilt around hierarchy and themed work-zones: rooms per folder, a work-zone per session, subagents joining their main agent's job.

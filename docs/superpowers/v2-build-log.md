@@ -38,11 +38,16 @@ Sequential phases, each implemented by a Fable subagent, verified by the orchest
 ## Progress
 
 - [x] Spec written + committed (`5a3d085`).
-- [ ] Phase 1 — assets + atlas
-- [ ] Phase 2 — theme + layout
-- [ ] Phase 3 — renderer + effects
-- [ ] Phase 4 — demo + visual iteration
-- [ ] Phase 5 — ship
+- [x] Phase 1 — assets + atlas (`02d5c6e`)
+- [x] Phase 2+3 — theme + layout + renderer + effects (`191f54e`)
+- [x] Phase 4 — polish pass: connected mine cluster, ground scatter, tighter sub clustering (`7a70174`)
+- [x] Phase 5 — shipped to Pages (see below)
+
+## Outcome
+
+v2 is live. Orchestrator-verified by headless-Chrome screenshots at each phase. Three themed work-zones (office/mine/farm) render cohesively: crowned main agent at a shared work object (CRT desk / ore face + cart / tilled crop plot), subagents huddle at the same job, idle agents loaf in a themed nook, deterministic effects (screen flicker + code lines, rock chips + gold "+1", dirt puffs + crop growth) and ground scatter make each zone cozy. 55 tests green, tsc strict green. Built entirely by Fable 5 subagents; orchestrator owned the contracts (`theme.ts` poses, `THEME_TILES`, FloorPlan shape) and visual verification.
+
+Known soft edges to revisit with the user (none blocking): zones are roomy (intentional — leaves space for subagents to join); a stray gray rock can read slightly odd in a farm nook; new agents walk in from the top of their column (no doorway pathing yet); individual subagent animation from nested `subagents/*.jsonl` is still the separately-scoped future task (subagents currently show the generic work pose).
 
 ## Decision journal
 
