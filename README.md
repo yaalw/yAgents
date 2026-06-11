@@ -2,7 +2,7 @@
 
 A live pixel-art world for your Claude Code agents.
 
-Every **folder** Claude Code is opened in is a **room**. Every **session** is a **work-zone**, themed at random as an **office**, a **mine**, or a **farm** 👑⛏️🌾. The crowned main agent works at the zone's work object (a computer, an ore vein, a crop field); the **subagents** it spawns join the same job and help; and when an agent is **waiting for your input it wanders off to loaf** in the zone's lounge nook. They type, mine, and till with real little animations, so you can watch your agent workflows come alive.
+Every **folder** Claude Code is opened in is a **room**. Every **session** is a **work-zone**, themed at random as an **office**, a **mine**, or a **farm** 👑⛏️🌾. The crowned main agent works at the zone's station (a scribe's desk, an ore vein, a crop field); the **subagents** it spawns join the same job and help; and when an agent is **waiting for your input it wanders off to loaf** in the zone's lounge nook. They write, mine, and till with real animated sprites (CC0 [Ninja Adventure](https://pixel-boy.itch.io/ninja-adventure-asset-pack) art), so you can watch your agent workflows come alive.
 
 ## Use it
 
