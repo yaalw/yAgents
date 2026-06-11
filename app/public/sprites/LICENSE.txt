@@ -5,5 +5,6 @@ http://creativecommons.org/publicdomain/zero/1.0/
   indoor.png — "Roguelike Indoor pack"      https://kenney.nl/assets/roguelike-indoors
   rpg.png    — "Roguelike/RPG pack"         https://kenney.nl/assets/roguelike-rpg-pack
   chars.png  — "Roguelike Characters pack"  https://kenney.nl/assets/roguelike-characters
+  city.png   — "Roguelike Modern City pack" https://kenney.nl/assets/roguelike-modern-city
 
 Credit "Kenney" or "www.kenney.nl" is appreciated but not mandatory.
