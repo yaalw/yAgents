@@ -58,6 +58,91 @@ export function codeLines(t: number, seed: number, count: number, w: number, h: 
   return out
 }
 
+// ── ground scatter ──────────────────────────────────────────────────────────
+// Sparse per-tile floor details (papers, pebbles, grass tufts...) that make a
+// zone feel lived-in. Everything hashes off the ABSOLUTE tile coordinate, so
+// the scatter is stable across frames and zone growth — never random.
+
+const SCATTER_SEED: Record<Theme, number> = { office: 11, mine: 23, farm: 37 }
+// roughly 1 in 8 floor tiles gets one tiny detail; the farm runs a little
+// denser because its details are the smallest and its floor the most uniform
+const SCATTER_DENSITY: Record<Theme, number> = { office: 0.12, mine: 0.12, farm: 0.18 }
+
+export interface Scatter { kind: 0 | 1 | 2; ox: number; oy: number }
+
+/** Which detail (if any) lives on tile (tx, ty). Pure + deterministic. */
+export function scatterAt(theme: Theme, tx: number, ty: number): Scatter | null {
+  const seed = SCATTER_SEED[theme]
+  if (det(tx, ty, seed) > SCATTER_DENSITY[theme]) return null
+  const r = det(tx, ty, seed + 1)
+  // office: loose papers are the loudest detail, so keep them rare —
+  // mostly quiet floorboard seams with the odd coffee ring
+  const kind = (theme === 'office'
+    ? (r < 0.2 ? 0 : r < 0.5 ? 1 : 2)
+    : Math.floor(r * 3)) as 0 | 1 | 2
+  return {
+    kind,
+    ox: 2 + Math.floor(det(tx, ty, seed + 2) * 9), // 2..10: detail stays inside the tile
+    oy: 2 + Math.floor(det(tx, ty, seed + 3) * 9),
+  }
+}
+
+/** Draw the tile's scatter detail (if any) at the tile's top-left px (x, y). */
+export function drawGroundScatter(ctx: CanvasRenderingContext2D, theme: Theme, tx: number, ty: number, x: number, y: number): void {
+  const s = scatterAt(theme, tx, ty)
+  if (!s) return
+  const px = x + s.ox, py = y + s.oy
+  if (theme === 'office') {
+    if (s.kind === 0) { // dropped sheet of paper, a quiet scribbled line on it
+      ctx.fillStyle = 'rgba(238, 228, 204, 0.65)'
+      ctx.fillRect(px, py, 4, 3)
+      ctx.fillStyle = 'rgba(110, 90, 70, 0.40)'
+      ctx.fillRect(px + 1, py + 1, 2, 1)
+    } else if (s.kind === 1) { // coffee ring
+      ctx.fillStyle = 'rgba(86, 52, 24, 0.30)'
+      ctx.fillRect(px + 1, py, 2, 1); ctx.fillRect(px + 1, py + 3, 2, 1)
+      ctx.fillRect(px, py + 1, 1, 2); ctx.fillRect(px + 3, py + 1, 1, 2)
+    } else { // worn floorboard seam
+      ctx.fillStyle = 'rgba(60, 38, 20, 0.20)'
+      ctx.fillRect(px - 1, py, 6, 1)
+    }
+  } else if (theme === 'mine') {
+    if (s.kind === 0) { // pebbles
+      ctx.fillStyle = '#8d979e'
+      ctx.fillRect(px, py, 2, 2)
+      ctx.fillStyle = '#79838a'
+      ctx.fillRect(px + 3, py + 2, 1, 1)
+    } else if (s.kind === 1) { // hairline crack in the stone
+      ctx.fillStyle = 'rgba(40, 44, 52, 0.35)'
+      ctx.fillRect(px, py, 2, 1); ctx.fillRect(px + 2, py + 1, 2, 1); ctx.fillRect(px + 4, py + 2, 1, 1)
+    } else { // glinting ore fleck
+      ctx.fillStyle = '#d4a017'
+      ctx.fillRect(px, py, 1, 1)
+      ctx.fillStyle = 'rgba(255, 215, 64, 0.55)'
+      ctx.fillRect(px + 1, py, 1, 1)
+    }
+  } else {
+    if (s.kind === 0) { // grass tuft
+      ctx.fillStyle = '#3e8226'
+      ctx.fillRect(px, py, 1, 2); ctx.fillRect(px + 2, py, 1, 2); ctx.fillRect(px + 1, py + 1, 1, 1)
+      ctx.fillStyle = '#a8dc6e'
+      ctx.fillRect(px + 1, py - 1, 1, 1)
+    } else if (s.kind === 1) { // tiny wildflower
+      ctx.fillStyle = '#4e9434'
+      ctx.fillRect(px, py + 1, 1, 2)
+      ctx.fillStyle = '#f7f3e8'
+      ctx.fillRect(px - 1, py, 1, 1); ctx.fillRect(px + 1, py, 1, 1); ctx.fillRect(px, py - 1, 1, 1)
+      ctx.fillStyle = '#e8b84a'
+      ctx.fillRect(px, py, 1, 1)
+    } else { // pebble in the grass
+      ctx.fillStyle = '#9aa593'
+      ctx.fillRect(px, py, 2, 1)
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.15)'
+      ctx.fillRect(px, py + 1, 2, 1)
+    }
+  }
+}
+
 /** Draw the per-theme work effect at a zone's work anchor (px). Call only while
  *  someone in the zone is actually in the `work` pose. */
 export function drawWorkEffects(ctx: CanvasRenderingContext2D, theme: Theme, wx: number, wy: number, t: number, seed: number): void {

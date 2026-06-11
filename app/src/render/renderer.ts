@@ -3,7 +3,7 @@ import { TILE } from '../layout/layoutEngine'
 import { Camera } from './camera'
 import { CharacterSet, Character, animFrame, poseBodyOffset, drawToolOverlay, FRAME_MS, IDLE_FRAME_MS } from './characters'
 import { Atlas, CHAR_TILES, MAIN_CHAR, THEME_TILES, type Theme } from './atlas'
-import { drawWorkEffects, cropStageIndex } from './effects'
+import { drawWorkEffects, drawGroundScatter, cropStageIndex } from './effects'
 import { hashString } from '../util/rng'
 
 const SHIRTS = ['#c0504e', '#4e79c0', '#4ec07a', '#c0a04e', '#9a4ec0', '#4ebdc0']
@@ -126,15 +126,21 @@ export class Renderer {
         for (let j = 0; j < zone.th; j++) atlas.draw(ctx, tiles.floor, x + i * TILE, y + j * TILE)
         atlas.draw(ctx, tiles.wall, x + i * TILE, y)
       }
+      // sparse deterministic ground scatter (skip the wall row) — lived-in floors
+      for (let i = 0; i < zone.tw; i++) {
+        for (let j = 1; j < zone.th; j++) {
+          drawGroundScatter(ctx, zone.theme, zone.tx + i, zone.ty + j, x + i * TILE, y + j * TILE)
+        }
+      }
       this.drawWorkObject(zone, t)
       // lounge nook: themed props lined up along the nook's back edge
       tiles.lounge.forEach((prop, i) => {
         atlas.draw(ctx, prop, (zone.lounge.tx + i) * TILE, zone.lounge.ty * TILE)
       })
-      // ambient set dressing on the zone's quieter right side
-      const deco = tiles.deco ?? []
-      if (deco[0]) atlas.draw(ctx, deco[0], (zone.tx + 10) * TILE, (zone.ty + 1) * TILE)
-      if (deco[1]) atlas.draw(ctx, deco[1], (zone.tx + 11) * TILE, (zone.ty + 6) * TILE)
+      // ambient set dressing: placed pairs (never the label row, never a lone corner)
+      for (const d of tiles.deco ?? []) {
+        atlas.draw(ctx, d.ref, (zone.tx + d.tx) * TILE, (zone.ty + d.ty) * TILE)
+      }
     } else {
       const tint = FALLBACK_TINT[zone.theme]
       ctx.fillStyle = tint.floor
@@ -186,8 +192,12 @@ export class Renderer {
       if (desk) { atlas.draw(ctx, desk, wx, wy); atlas.draw(ctx, desk, wx + TILE, wy) }
       if (terminal) atlas.draw(ctx, terminal, wx + 8, wy - 6)
     } else {
-      // mine: boulder + ore pile + cart — in a row
-      tiles.workObject.forEach((tile, i) => atlas.draw(ctx, tile, wx + i * TILE, wy))
+      // mine: one connected mining face — the boulder being struck, the ore
+      // knocked loose beside it, and the cart being loaded just below the ore
+      const [boulder, ore, cart] = tiles.workObject
+      if (boulder) atlas.draw(ctx, boulder, wx, wy)
+      if (ore) atlas.draw(ctx, ore, wx + TILE, wy)
+      if (cart) atlas.draw(ctx, cart, wx + TILE, wy + TILE)
     }
   }
 

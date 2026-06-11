@@ -14,7 +14,9 @@ const ROOM_GAP = 1
 // offsets from a zone's top-left corner (row 0 is the back wall)
 const WORK_ANCHOR = { tx: 5, ty: 2 }
 const MAIN_SPOT = { tx: 5, ty: 4 }
-const SUB_SPOTS: [number, number][] = [[3, 3], [8, 3], [3, 5], [8, 5]]
+// helpers huddle snugly around the shared work object (cols 5-6, rows 2-3)
+// and the main agent at (5,4) — same rock, same desk, same plot
+const SUB_SPOTS: [number, number][] = [[4, 3], [7, 3], [4, 5], [7, 5]]
 const LOUNGE = { tx: 1, ty: 6, tw: 4, th: 3 }
 const LOAF_SPOTS: [number, number][] = [[1, 7], [2, 7], [3, 7], [2, 8]]
 

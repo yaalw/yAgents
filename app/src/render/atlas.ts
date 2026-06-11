@@ -76,13 +76,15 @@ export interface ThemeTiles {
   floor: TileRef
   /** back-wall strip drawn along a room's top edge */
   wall: TileRef
-  /** the thing the agent acts on; 1-4 tiles drawn as a small cluster.
-   *  farm: 4 tiles = a 2x2 tilled plot in order TL, TR, BL, BR. */
+  /** the thing the agent acts on; 1-4 tiles drawn as a small connected cluster.
+   *  farm: 4 tiles = a 2x2 tilled plot in order TL, TR, BL, BR.
+   *  mine: 3 tiles = boulder, ore pile, cart — an L-shaped mining face. */
   workObject: TileRef[]
   /** 2-4 loafing props for the theme */
   lounge: TileRef[]
-  /** ambient set dressing for the zone's empty right side (up to 2) */
-  deco?: TileRef[]
+  /** ambient set dressing, placed (zone-relative tiles) so props read as
+   *  arranged, never dropped in a corner or on the label row */
+  deco?: { ref: TileRef; tx: number; ty: number }[]
   /** FARM ONLY: crop growth sprites, sprout → mid → ripe */
   cropStages?: TileRef[]
 }
@@ -102,17 +104,17 @@ export const THEME_TILES: Record<Theme, ThemeTiles> = {
       t('rpg', 43, 12),           // bookshelf with colored books
     ],
     deco: [
-      t('rpg', 45, 12),           // tall bookshelf against the back wall
-      t('indoor', 16, 0),         // potted plant in the far corner
+      { ref: t('rpg', 45, 12), tx: 9, ty: 1 },   // tall bookshelf against the back wall
+      { ref: t('indoor', 16, 0), tx: 10, ty: 1 }, // potted plant beside it
     ],
   },
   mine: {
     floor: t('rpg', 7, 0),        // gray speckled cave stone
     wall: t('rpg', 38, 18),       // brown rock face with embedded stones
     workObject: [
-      t('rpg', 55, 19),           // chunky brown rock pile (pops on the gray floor)
-      t('rpg', 42, 11),           // gold ore pile
-      t('rpg', 49, 21),           // wooden mine cart full of gold
+      t('rpg', 54, 19),           // the boulder being mined (big brown rock)
+      t('rpg', 42, 11),           // gold ore pile knocked loose beside it
+      t('rpg', 49, 21),           // wooden mine cart being loaded below
     ],
     lounge: [
       t('rpg', 47, 17),           // large brown supply crate
@@ -120,8 +122,8 @@ export const THEME_TILES: Record<Theme, ThemeTiles> = {
       t('rpg', 53, 21),           // chopping stump with an axe
     ],
     deco: [
-      t('rpg', 54, 19),           // small brown rock pile
-      t('rpg', 54, 20),           // mossy brown rocks
+      { ref: t('rpg', 55, 19), tx: 9, ty: 1 },   // rock pile at the base of the rock face
+      { ref: t('rpg', 54, 20), tx: 10, ty: 1 },  // mossy rocks beside it — a little outcrop
     ],
   },
   farm: {
@@ -137,8 +139,8 @@ export const THEME_TILES: Record<Theme, ThemeTiles> = {
       t('rpg', 46, 23),           // fence gate segment
     ],
     deco: [
-      t('rpg', 25, 11),           // white wildflower by the fence
-      t('rpg', 24, 11),           // leafy green bush
+      { ref: t('rpg', 24, 11), tx: 9, ty: 1 },   // leafy green bush along the fence
+      { ref: t('rpg', 25, 11), tx: 10, ty: 1 },  // white wildflower tucked at its side
     ],
     cropStages: [
       t('rpg', 22, 10),           // sprout: tiny green shoots

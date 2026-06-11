@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { burstParticles, cropStageIndex, codeLines, SWING_MS, CROP_STAGE_MS } from '../src/render/effects'
+import { burstParticles, cropStageIndex, codeLines, scatterAt, SWING_MS, CROP_STAGE_MS } from '../src/render/effects'
 import { animFrame, poseBodyOffset } from '../src/render/characters'
 
 describe('burstParticles', () => {
@@ -46,6 +46,31 @@ describe('codeLines', () => {
       }
       expect(codeLines(t, 5, 3, 8, 7)).toEqual(lines)
     }
+  })
+})
+
+describe('ground scatter', () => {
+  it('is deterministic per tile and differs across themes', () => {
+    expect(scatterAt('mine', 12, 7)).toEqual(scatterAt('mine', 12, 7))
+    const a = [...Array(64)].map((_, i) => scatterAt('office', i, 3))
+    const b = [...Array(64)].map((_, i) => scatterAt('farm', i, 3))
+    expect(a).not.toEqual(b) // themes get their own scatter pattern
+  })
+  it('stays sparse and inside the tile', () => {
+    let n = 0
+    for (let tx = 0; tx < 40; tx++) {
+      for (let ty = 0; ty < 40; ty++) {
+        const s = scatterAt('farm', tx, ty)
+        if (!s) continue
+        n++
+        expect(s.ox).toBeGreaterThanOrEqual(2)
+        expect(s.ox).toBeLessThanOrEqual(10)
+        expect(s.oy).toBeGreaterThanOrEqual(2)
+        expect(s.oy).toBeLessThanOrEqual(10)
+      }
+    }
+    expect(n).toBeGreaterThan(40)   // present: the floor feels lived-in
+    expect(n).toBeLessThan(400)     // sparse: texture, not clutter
   })
 })
 

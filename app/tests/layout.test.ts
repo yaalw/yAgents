@@ -43,7 +43,7 @@ describe('layout', () => {
     expect(main.theme).toBe(z.theme)
     const subs = plan.seats.filter(s => s.kind === 'sub')
     expect(subs).toHaveLength(2)
-    const cluster = [[3, 3], [8, 3], [3, 5], [8, 5]].map(([dx, dy]) => `${z.tx + dx!},${z.ty + dy!}`)
+    const cluster = [[4, 3], [7, 3], [4, 5], [7, 5]].map(([dx, dy]) => `${z.tx + dx!},${z.ty + dy!}`)
     for (const s of subs) {
       expect(cluster).toContain(`${s.tx},${s.ty}`)
       expect(s.agentKey).toBe('d1/a.jsonl#' + s.agentKey.split('#')[1])  // '#' separator preserved
