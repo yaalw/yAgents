@@ -8,3 +8,5 @@ http://creativecommons.org/publicdomain/zero/1.0/
   city.png   — "Roguelike Modern City pack" https://kenney.nl/assets/roguelike-modern-city
 
 Credit "Kenney" or "www.kenney.nl" is appreciated but not mandatory.
+
+  ninja/* — "Ninja Adventure Asset Pack" by Pixel-Boy & AAA  https://pixel-boy.itch.io/ninja-adventure-asset-pack (CC0)

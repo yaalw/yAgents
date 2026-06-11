@@ -2,7 +2,7 @@ import type { DataAdapter, OfficeView } from './types'
 import { OfficeStore } from './state/officeStore'
 import { layout, type FloorPlan } from './layout/layoutEngine'
 import { Renderer } from './render/renderer'
-import { Atlas } from './render/atlas'
+import { NinjaSkin } from './render/skins/ninja'
 import { DemoAdapter } from './adapters/demo'
 import { FolderPickerAdapter } from './adapters/folderPicker'
 import { LocalServerAdapter } from './adapters/localServer'
@@ -18,8 +18,10 @@ let view: OfficeView = { rooms: [] }
 let plan: FloorPlan = layout(view)
 
 const renderer = new Renderer(canvas, () => plan)
-// sprites are progressive enhancement: flat-color rendering until loaded, forever if they 404
-Atlas.load().then(a => renderer.setAtlas(a)).catch(() => {})
+// sprites are progressive enhancement: flat-color rendering until the skin loads, forever if it 404s
+const skin = new NinjaSkin()
+renderer.setSkin(skin)
+skin.load().catch(() => {})
 
 function refresh(): void {
   view = store.view()

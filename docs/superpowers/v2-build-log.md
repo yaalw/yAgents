@@ -49,6 +49,12 @@ v2 is live. Orchestrator-verified by headless-Chrome screenshots at each phase. 
 
 Known soft edges to revisit with the user (none blocking): zones are roomy (intentional — leaves space for subagents to join); a stray gray rock can read slightly odd in a farm nook; new agents walk in from the top of their column (no doorway pathing yet); individual subagent animation from nested `subagents/*.jsonl` is still the separately-scoped future task (subagents currently show the generic work pose).
 
+## v3 — art-pack re-skin (Ninja Adventure)
+
+User wasn't happy with the flat Kenney roguelike look. Evaluated options; picked **Ninja Adventure Asset Pack** (Pixel-Boy & AAA, **CC0**) — cohesive, cute, and crucially **animated** (4-direction walk/idle/attack/item sheets per character), with a 40+ character roster, Field/Dungeon/Interior/Nature tilesets, real tool sprites (Pickaxe/Hoe/Sickle/Shovel), and particle FX (Rock/Grass/Spark/Wood). Maps to themes: Field→farm, Dungeon→mine, Interior→office (reinterpreted as a scribe's study since it's a fantasy pack with no computer).
+
+**Skin system:** art now lives behind a swappable `Skin` seam so multiple styles are possible. Ninja Adventure is the bundled CC0 default. Premium packs (Sunnyside, LimeZu) can't be committed to the public repo (their licenses forbid redistributing raw assets), but the seam lets users drop those in **locally** without committing them. Raw 94 MB pack is gitignored; only the ~404 KB of sheets we use live in `app/public/sprites/ninja/`.
+
 ## Decision journal
 
 - **2026-06-11 — Lounge is per-zone, not per-room.** Theme is per-zone (user's call), which conflicts with a single per-room lounge (what theme would a mixed-theme room's lounge be?). Resolved by giving **each work-zone its own small themed lounge nook**. This is *more* decentralized (the whole point of killing the central kitchen) and keeps every zone a coherent self-contained themed stage. Reinterprets "each room has its own lounging area" → "each zone has its own loaf nook." Easy to revisit.

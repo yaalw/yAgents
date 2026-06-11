@@ -6,6 +6,17 @@ import { hashString } from '../util/rng'
 
 const SPEED = 6 // tiles per second
 
+/** Which way a character's sprite points. Derived from movement while
+ *  walking; from the seat's face target (the work object) when still. */
+export type Facing = 'down' | 'up' | 'left' | 'right'
+
+/** Dominant-axis facing for a delta; vertical wins ties (work objects sit above seats). */
+export function facingFor(dx: number, dy: number, fallback: Facing = 'down'): Facing {
+  if (dx === 0 && dy === 0) return fallback
+  if (Math.abs(dy) >= Math.abs(dx)) return dy < 0 ? 'up' : 'down'
+  return dx < 0 ? 'left' : 'right'
+}
+
 // 2-frame animation clocks. Everything derives from time — no Math.random,
 // so frames are deterministic and characters desync only via their phase.
 export const FRAME_MS = 280      // work swings, walk cycle, gestures
@@ -79,22 +90,40 @@ export class Character {
   leaving = false
   pose: Pose = 'idle'
   theme: Theme = 'office'
+  facing: Facing = 'down'
+  /** tile the character turns toward once it stops walking (e.g. the work object) */
+  faceTx?: number
+  faceTy?: number
   constructor(public key: string, public kind: SeatKind, public status: AgentStatus, tx: number, ty: number) {
     this.x = tx; this.y = ty; this.targetX = tx; this.targetY = ty
   }
   get palette(): number { return hashString(this.key) }
+  /** Re-derive facing from the face target; no-op mid-walk (movement owns facing then). */
+  refreshFacing(): void { if (!this.walking) this.settleFacing() }
+  private settleFacing(): void {
+    if (this.faceTx !== undefined && this.faceTy !== undefined) {
+      this.facing = facingFor(this.faceTx - this.x, this.faceTy - this.y, this.facing)
+    } else {
+      this.facing = 'down'
+    }
+  }
   update(dt: number): void {
     const dx = this.targetX - this.x, dy = this.targetY - this.y
     const dist = Math.hypot(dx, dy)
-    if (dist < 0.01) { this.x = this.targetX; this.y = this.targetY; this.walking = false; return }
-    this.walking = true
+    if (dist < 0.01) {
+      this.x = this.targetX; this.y = this.targetY
+      if (this.walking) { this.walking = false; this.settleFacing() }
+      return
+    }
+    if (!this.walking) this.walking = true
+    this.facing = facingFor(dx, dy, this.facing)
     const step = Math.min(dist, SPEED * dt)
     this.x += (dx / dist) * step
     this.y += (dy / dist) * step
     // Check if we've arrived after this move
     const newDx = this.targetX - this.x, newDy = this.targetY - this.y
     const newDist = Math.hypot(newDx, newDy)
-    if (newDist < 0.01) { this.x = this.targetX; this.y = this.targetY; this.walking = false }
+    if (newDist < 0.01) { this.x = this.targetX; this.y = this.targetY; this.walking = false; this.settleFacing() }
   }
 }
 
@@ -110,6 +139,8 @@ export class CharacterSet {
       if (existing) {
         existing.targetX = s.tx; existing.targetY = s.ty
         existing.status = s.status; existing.pose = s.pose; existing.theme = s.theme
+        existing.faceTx = s.faceTx; existing.faceTy = s.faceTy
+        existing.refreshFacing()
         existing.leaving = false
       } else {
         // the very first sync places everyone at their seat (the office was already
@@ -117,6 +148,8 @@ export class CharacterSet {
         const c = new Character(s.agentKey, s.kind, s.status, s.tx, this.booted ? -2 : s.ty)
         c.targetX = s.tx; c.targetY = s.ty
         c.pose = s.pose; c.theme = s.theme
+        c.faceTx = s.faceTx; c.faceTy = s.faceTy
+        c.refreshFacing() // already-seated characters turn toward their work right away
         this.chars.set(s.agentKey, c)
       }
     }

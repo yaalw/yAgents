@@ -2,3 +2,7 @@ node_modules/
 dist/
 .superpowers/
 .DS_Store
+
+# Raw upstream asset packs (we copy only the sheets we use into app/public/sprites)
+Ninja Adventure - Asset Pack/
+Ninja Adventure - Asset Pack.zip

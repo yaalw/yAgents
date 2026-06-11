@@ -1,27 +1,31 @@
 import type { FloorPlan, RoomBox, ZoneBox } from '../layout/layoutEngine'
 import { TILE } from '../layout/layoutEngine'
 import { Camera } from './camera'
-import { CharacterSet, Character, animFrame, poseBodyOffset, drawToolOverlay, FRAME_MS, IDLE_FRAME_MS } from './characters'
-import { Atlas, CHAR_TILES, MAIN_CHAR, THEME_TILES, type Theme } from './atlas'
-import { drawWorkEffects, drawGroundScatter, cropStageIndex } from './effects'
+import { CharacterSet, Character, animFrame, poseBodyOffset, FRAME_MS, IDLE_FRAME_MS } from './characters'
+import type { Theme } from './atlas'
+import type { Skin } from './skins/skin'
+import { drawWorkEffects } from './effects'
 import { hashString } from '../util/rng'
 
 const SHIRTS = ['#c0504e', '#4e79c0', '#4ec07a', '#c0a04e', '#9a4ec0', '#4ebdc0']
 
-// flat-color fallback used until the sprite atlas loads (or forever if it 404s)
+// flat-color fallback used until the active skin loads (or forever if it 404s)
 const FALLBACK_TINT: Record<Theme, { floor: string; wall: string; nook: string }> = {
   office: { floor: '#3d3654', wall: '#52486e', nook: '#352f4a' },
   mine: { floor: '#3a3a46', wall: '#2c2c36', nook: '#32323c' },
   farm: { floor: '#2f4a2c', wall: '#4a3a22', nook: '#294026' },
 }
 
+/** Owns the canvas, camera, rAF loop, painter's y-sort and hit testing.
+ *  All sprite drawing is delegated to the active Skin; a minimal flat-color
+ *  fallback keeps the office legible while no skin is ready. */
 export class Renderer {
   readonly camera = new Camera()
   readonly characters = new CharacterSet()
   private ctx: CanvasRenderingContext2D
   private raf = 0
   private last = 0
-  private atlas: Atlas | undefined
+  private skin: Skin | undefined
   private lastFit = ''
 
   constructor(private canvas: HTMLCanvasElement, private getPlan: () => FloorPlan) {
@@ -35,8 +39,8 @@ export class Renderer {
     window.addEventListener('resize', resize)
   }
 
-  /** Sprites are optional: until the atlas loads (or if it 404s) we fall back to flat-color drawing. */
-  setAtlas(atlas: Atlas): void { this.atlas = atlas }
+  /** Skins are optional: until one is set and ready we fall back to flat-color drawing. */
+  setSkin(skin: Skin): void { this.skin = skin }
 
   start(): void {
     const loop = (t: number) => {
@@ -81,6 +85,7 @@ export class Renderer {
 
   private draw(plan: FloorPlan, t: number): void {
     const { ctx, canvas, camera } = this
+    const skin = this.skin?.ready ? this.skin : undefined
     this.maybeFit(plan)
     ctx.imageSmoothingEnabled = false
     ctx.fillStyle = '#1d1830'
@@ -94,17 +99,28 @@ export class Renderer {
     for (const s of plan.seats) if (s.pose === 'work') working.add(s.tableKey)
 
     for (const room of plan.rooms) {
-      for (const zone of room.zones) this.drawZone(zone, t)
+      for (const zone of room.zones) {
+        if (skin) skin.drawZone(ctx, zone, t)
+        else this.drawZoneFallback(zone)
+        // crisp zone edge
+        ctx.strokeStyle = '#1d1830'
+        ctx.lineWidth = 1
+        ctx.strokeRect(zone.tx * TILE + 0.5, zone.ty * TILE + 0.5, zone.tw * TILE - 1, zone.th * TILE - 1)
+      }
       this.drawRoomChrome(room)
     }
     // painter's order: lower characters draw over higher ones
     const chars = this.characters.all().sort((a, b) => a.y - b.y)
-    for (const c of chars) this.drawCharacter(c, t)
+    for (const c of chars) {
+      if (skin) skin.drawCharacter(ctx, c, t)
+      else this.drawCharacterFallback(c, t)
+    }
     // effects float above everything in their zone
     for (const room of plan.rooms) {
       for (const zone of room.zones) {
         if (working.has(zone.tableKey)) {
-          drawWorkEffects(ctx, zone.theme, zone.workTx * TILE, zone.workTy * TILE, t, hashString(zone.tableKey) % 4096)
+          if (skin) skin.drawEffects(ctx, zone, t)
+          else drawWorkEffects(ctx, zone.theme, zone.workTx * TILE, zone.workTy * TILE, t, hashString(zone.tableKey) % 4096)
         }
         if (zone.overflow > 0) {
           ctx.fillStyle = '#d4a017'
@@ -116,93 +132,16 @@ export class Renderer {
     ctx.restore()
   }
 
-  private drawZone(zone: ZoneBox, t: number): void {
-    const { ctx, atlas } = this
-    const x = zone.tx * TILE, y = zone.ty * TILE
-    const tiles = THEME_TILES[zone.theme]
-    if (atlas) {
-      // floor everywhere (also under the wall row: the farm fence is transparent)
-      for (let i = 0; i < zone.tw; i++) {
-        for (let j = 0; j < zone.th; j++) atlas.draw(ctx, tiles.floor, x + i * TILE, y + j * TILE)
-        atlas.draw(ctx, tiles.wall, x + i * TILE, y)
-      }
-      // sparse deterministic ground scatter (skip the wall row) — lived-in floors
-      for (let i = 0; i < zone.tw; i++) {
-        for (let j = 1; j < zone.th; j++) {
-          drawGroundScatter(ctx, zone.theme, zone.tx + i, zone.ty + j, x + i * TILE, y + j * TILE)
-        }
-      }
-      this.drawWorkObject(zone, t)
-      // lounge nook: themed props lined up along the nook's back edge
-      tiles.lounge.forEach((prop, i) => {
-        atlas.draw(ctx, prop, (zone.lounge.tx + i) * TILE, zone.lounge.ty * TILE)
-      })
-      // ambient set dressing: placed pairs (never the label row, never a lone corner)
-      for (const d of tiles.deco ?? []) {
-        atlas.draw(ctx, d.ref, (zone.tx + d.tx) * TILE, (zone.ty + d.ty) * TILE)
-      }
-    } else {
-      const tint = FALLBACK_TINT[zone.theme]
-      ctx.fillStyle = tint.floor
-      ctx.fillRect(x, y, zone.tw * TILE, zone.th * TILE)
-      ctx.fillStyle = tint.wall
-      ctx.fillRect(x, y, zone.tw * TILE, TILE)
-      ctx.fillStyle = tint.nook
-      ctx.fillRect(zone.lounge.tx * TILE, zone.lounge.ty * TILE, zone.lounge.tw * TILE, zone.lounge.th * TILE)
-      this.drawWorkObjectFallback(zone)
-    }
-    // crisp zone edge
-    ctx.strokeStyle = '#1d1830'
-    ctx.lineWidth = 1
-    ctx.strokeRect(x + 0.5, y + 0.5, zone.tw * TILE - 1, zone.th * TILE - 1)
-  }
-
-  private drawWorkObject(zone: ZoneBox, t: number): void {
-    const { ctx, atlas } = this
-    if (!atlas) return
-    const tiles = THEME_TILES[zone.theme]
-    const wx = zone.workTx * TILE, wy = zone.workTy * TILE
-    if (zone.theme === 'farm') {
-      // 2x2 tilled plot: TL, TR, BL, BR
-      tiles.workObject.forEach((tile, i) => {
-        atlas.draw(ctx, tile, wx + (i % 2) * TILE, wy + Math.floor(i / 2) * TILE)
-      })
-      // darken the soil and dash short furrows so it reads as tilled earth, not planks
-      ctx.fillStyle = 'rgba(58, 34, 14, 0.30)'
-      ctx.fillRect(wx, wy, TILE * 2, TILE * 2)
-      ctx.fillStyle = 'rgba(0,0,0,0.25)'
-      for (let row = 0; row < 4; row++) {
-        for (let seg = 0; seg < 7; seg++) ctx.fillRect(wx + 2 + seg * 4, wy + 4 + row * 7, 2, 1)
-      }
-      // crops grow on the plot over time, staggered per tile, then reset (harvest)
-      const stages = tiles.cropStages
-      if (stages && stages.length > 0) {
-        const seed = hashString(zone.tableKey)
-        for (let i = 0; i < 4; i++) {
-          const stage = cropStageIndex(t, (seed + i * 3) % 97, stages.length)
-          if (stage >= 0) {
-            const ref = stages[Math.min(stage, stages.length - 1)]!
-            atlas.draw(ctx, ref, wx + (i % 2) * TILE, wy + Math.floor(i / 2) * TILE)
-          }
-        }
-      }
-    } else if (zone.theme === 'office') {
-      // a two-tile desk with the terminal standing on top of it
-      const [desk, terminal] = tiles.workObject
-      if (desk) { atlas.draw(ctx, desk, wx, wy); atlas.draw(ctx, desk, wx + TILE, wy) }
-      if (terminal) atlas.draw(ctx, terminal, wx + 8, wy - 6)
-    } else {
-      // mine: one connected mining face — the boulder being struck, the ore
-      // knocked loose beside it, and the cart being loaded just below the ore
-      const [boulder, ore, cart] = tiles.workObject
-      if (boulder) atlas.draw(ctx, boulder, wx, wy)
-      if (ore) atlas.draw(ctx, ore, wx + TILE, wy)
-      if (cart) atlas.draw(ctx, cart, wx + TILE, wy + TILE)
-    }
-  }
-
-  private drawWorkObjectFallback(zone: ZoneBox): void {
+  private drawZoneFallback(zone: ZoneBox): void {
     const { ctx } = this
+    const x = zone.tx * TILE, y = zone.ty * TILE
+    const tint = FALLBACK_TINT[zone.theme]
+    ctx.fillStyle = tint.floor
+    ctx.fillRect(x, y, zone.tw * TILE, zone.th * TILE)
+    ctx.fillStyle = tint.wall
+    ctx.fillRect(x, y, zone.tw * TILE, TILE)
+    ctx.fillStyle = tint.nook
+    ctx.fillRect(zone.lounge.tx * TILE, zone.lounge.ty * TILE, zone.lounge.tw * TILE, zone.lounge.th * TILE)
     const wx = zone.workTx * TILE, wy = zone.workTy * TILE
     if (zone.theme === 'office') {
       ctx.fillStyle = '#222'
@@ -236,47 +175,24 @@ export class Renderer {
     ctx.fillText(label, x + 4, y + 11)
   }
 
-  private drawCharacter(c: Character, t: number): void {
-    const { ctx, atlas } = this
+  private drawCharacterFallback(c: Character, t: number): void {
+    const { ctx } = this
     const phase = c.palette % 2
     const period = (c.pose === 'idle' || c.pose === 'loaf') && !c.walking ? IDLE_FRAME_MS : FRAME_MS
     const frame = animFrame(t, period, phase)
     const { dx, dy } = poseBodyOffset(c.pose, frame, c.walking)
     const x = c.x * TILE + dx, y = c.y * TILE + dy
 
-    if (atlas) {
-      const tile = c.kind === 'main' ? MAIN_CHAR : CHAR_TILES[c.palette % CHAR_TILES.length]!
-      atlas.draw(ctx, tile, x, y)
-    } else {
-      const body = c.kind === 'main' ? '#d4a017' : SHIRTS[c.palette % SHIRTS.length]!
-      ctx.fillStyle = body
-      ctx.fillRect(x + 3, y + 6, 10, 8)
-      ctx.fillStyle = '#e8c39e'
-      ctx.fillRect(x + 4, y, 8, 7)
-      ctx.fillStyle = ['#3a2a1a', '#1a1a2a', '#5a3a1a', '#2a2a2a'][c.palette % 4]!
-      ctx.fillRect(x + 4, y, 8, 3)
-      ctx.fillStyle = '#2a2438'
-      ctx.fillRect(x + 4 + frame, y + 14, 3, 2)
-      ctx.fillRect(x + 9 - frame, y + 14, 3, 2)
-    }
-
-    // pose dressing (the motion IS the status — glyphs stay tiny)
-    if (!c.walking) {
-      if (c.pose === 'work') drawToolOverlay(ctx, c.theme, frame, x, y)
-      else if (c.pose === 'gesture') {
-        ctx.fillStyle = frame ? '#ffd700' : '#d4a017'
-        ctx.fillRect(x + 13, y - 6, 2, 4)
-        ctx.fillRect(x + 13, y - 1, 2, 2)
-      } else if (c.pose === 'loaf') {
-        const zz = animFrame(t, 1100, phase)
-        ctx.fillStyle = 'rgba(255, 248, 236, 0.75)'
-        ctx.font = '6px monospace'
-        ctx.fillText('z', x + 12, y - 2 - zz)
-      } else if (c.pose === 'idle') {
-        ctx.fillStyle = 'rgba(255, 248, 236, 0.55)'
-        for (let i = 0; i <= frame + 1; i++) ctx.fillRect(x + 11 + i * 3, y - 4, 2, 2)
-      }
-    }
+    const body = c.kind === 'main' ? '#d4a017' : SHIRTS[c.palette % SHIRTS.length]!
+    ctx.fillStyle = body
+    ctx.fillRect(x + 3, y + 6, 10, 8)
+    ctx.fillStyle = '#e8c39e'
+    ctx.fillRect(x + 4, y, 8, 7)
+    ctx.fillStyle = ['#3a2a1a', '#1a1a2a', '#5a3a1a', '#2a2a2a'][c.palette % 4]!
+    ctx.fillRect(x + 4, y, 8, 3)
+    ctx.fillStyle = '#2a2438'
+    ctx.fillRect(x + 4 + frame, y + 14, 3, 2)
+    ctx.fillRect(x + 9 - frame, y + 14, 3, 2)
 
     // crown for main agents
     if (c.kind === 'main') {

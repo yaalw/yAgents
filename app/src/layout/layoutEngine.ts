@@ -44,6 +44,9 @@ export interface Seat {
   tx: number
   ty: number
   tableKey: string
+  /** tile to face once seated (the work object's center); absent → face the camera */
+  faceTx?: number
+  faceTy?: number
 }
 
 export interface FloorPlan { rooms: RoomBox[]; seats: Seat[]; tw: number; th: number }
@@ -76,16 +79,19 @@ export function layout(view: OfficeView): FloorPlan {
       const place = (agentKey: string, kind: SeatKind, status: AgentStatus): void => {
         const pose = poseFor(status)
         let tx: number, ty: number
+        let face: { faceTx: number; faceTy: number } | undefined
         if (loafs(status)) {
           const [lx, ly] = LOAF_SPOTS[loafIdx++ % LOAF_SPOTS.length]!
           tx = ztx + lx; ty = zty + ly
         } else if (kind === 'main') {
           tx = ztx + MAIN_SPOT.tx; ty = zty + MAIN_SPOT.ty
+          face = { faceTx: ztx + WORK_ANCHOR.tx + 1, faceTy: zty + WORK_ANCHOR.ty + 1 }
         } else {
           const [sx, sy] = SUB_SPOTS[subIdx++ % SUB_SPOTS.length]!
           tx = ztx + sx; ty = zty + sy
+          face = { faceTx: ztx + WORK_ANCHOR.tx + 1, faceTy: zty + WORK_ANCHOR.ty + 1 }
         }
-        seats.push({ agentKey, kind, status, pose, theme, tx, ty, tableKey: table.key })
+        seats.push({ agentKey, kind, status, pose, theme, tx, ty, tableKey: table.key, ...face })
       }
 
       place(table.key, 'main', table.status)
