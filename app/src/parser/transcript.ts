@@ -1,6 +1,6 @@
 export interface ParsedLine {
   role: 'user' | 'assistant'
-  toolUses: { id: string; name: string; target?: string }[]
+  toolUses: { id: string; name: string; target?: string; subagentType?: string }[]
   toolResultIds: string[]
   hasText: boolean
   isSidechain: boolean
@@ -28,7 +28,10 @@ export function parseLine(line: string): ParsedLine | null {
   const raw = msg.content
   const content: any[] = Array.isArray(raw) ? raw : typeof raw === 'string' && raw ? [{ type: 'text', text: raw }] : []
   const toolUses = content.filter(c => c?.type === 'tool_use')
-    .map(c => ({ id: String(c.id ?? ''), name: String(c.name ?? ''), target: targetOf(c.input) }))
+    .map(c => ({
+      id: String(c.id ?? ''), name: String(c.name ?? ''), target: targetOf(c.input),
+      subagentType: typeof c.input?.subagent_type === 'string' ? c.input.subagent_type : undefined,
+    }))
   const toolResultIds = content.filter(c => c?.type === 'tool_result' && c.tool_use_id)
     .map(c => String(c.tool_use_id))
   const hasText = content.some(c => c?.type === 'text' && typeof c.text === 'string' && c.text.trim().length > 0)

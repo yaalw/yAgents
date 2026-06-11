@@ -108,4 +108,52 @@ describe('SessionTracker', () => {
     feed(t, asstTool('tu1', 'TaskUpdate'))
     expect(t.subagents).toHaveLength(0)
   })
+
+  // --- waiting / "needs you" detection ---
+  it('pending AskUserQuestion → waiting; answered → thinking', () => {
+    const t = new SessionTracker()
+    feed(t, asstTool('q1', 'AskUserQuestion', { questions: [] }))
+    expect(t.status).toBe('waiting')          // prompt is on screen, blocked on the user
+    feed(t, userResult('q1'))
+    expect(t.status).toBe('thinking')         // user answered → back to work
+  })
+  it('pending ExitPlanMode (plan approval prompt) → waiting', () => {
+    const t = new SessionTracker()
+    feed(t, asstTool('p1', 'ExitPlanMode', { plan: 'do things' }))
+    expect(t.status).toBe('waiting')
+    feed(t, userResult('p1'))
+    expect(t.status).toBe('thinking')
+  })
+  it('a normal pending tool (Bash) stays running, not waiting', () => {
+    const t = new SessionTracker()
+    feed(t, asstTool('b1', 'Bash', { command: 'npm run build' }))
+    expect(t.status).toBe('running')
+  })
+
+  // --- real subagent metadata + toolUseId routing ---
+  it('Agent spawn captures description + subagent_type from the tool_use input', () => {
+    const t = new SessionTracker()
+    feed(t, asstTool('toolu_01abc', 'Agent', { subagent_type: 'Explore', model: 'fable', description: 'Scope doorway pathing', prompt: '...' }))
+    expect(t.subagents).toHaveLength(1)
+    expect(t.subagents[0]!.id).toBe('toolu_01abc')
+    expect(t.subagents[0]!.description).toBe('Scope doorway pathing')
+    expect(t.subagents[0]!.agentType).toBe('Explore')
+  })
+  it('updateSubagent routes by toolUseId and patches status/meta', () => {
+    const t = new SessionTracker()
+    feed(t, asstTool('toolu_A', 'Agent', { description: 'first' }))
+    feed(t, asstTool('toolu_B', 'Agent', { description: 'second' }))
+    expect(t.updateSubagent('toolu_A', { status: 'running', agentType: 'general-purpose' })).toBe(true)
+    expect(t.subagents.find(s => s.id === 'toolu_A')!.status).toBe('running')
+    expect(t.subagents.find(s => s.id === 'toolu_A')!.agentType).toBe('general-purpose')
+    expect(t.subagents.find(s => s.id === 'toolu_B')!.status).toBe('working') // untouched
+    expect(t.updateSubagent('toolu_NOPE', { status: 'running' })).toBe(false)
+  })
+  it('updateSubagent without toolUseId falls back to newest open subagent (demo/legacy)', () => {
+    const t = new SessionTracker()
+    feed(t, asstTool('toolu_A', 'Agent', {}))
+    feed(t, asstTool('toolu_B', 'Agent', {}))
+    expect(t.updateSubagent(undefined, { status: 'reading' })).toBe(true)
+    expect(t.subagents.find(s => s.id === 'toolu_B')!.status).toBe('reading')
+  })
 })

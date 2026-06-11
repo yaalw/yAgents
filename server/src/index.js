@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 import http from 'node:http'
-import { readFileSync, statSync, existsSync, readdirSync } from 'node:fs'
-import { join, dirname, extname, basename, resolve } from 'node:path'
+import { readFileSync, existsSync } from 'node:fs'
+import { join, dirname, extname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { homedir } from 'node:os'
 import { WebSocketServer } from 'ws'
 import chokidar from 'chokidar'
-import { readTail } from './tail.js'
+import { fileEvent, snapshot } from './scan.js'
 
 const args = process.argv.slice(2)
 const flag = (name, dflt) => {
@@ -36,38 +36,16 @@ const server = http.createServer((req, res) => {
 
 const wss = new WebSocketServer({ server, path: '/ws' })
 
-function fileEvent(filePath) {
-  return JSON.stringify({
-    dirKey: basename(dirname(filePath)),
-    fileName: basename(filePath),
-    content: readTail(filePath),
-    mtimeMs: (() => { try { return statSync(filePath).mtimeMs } catch { return Date.now() } })(),
-  })
-}
+wss.on('connection', ws => { for (const e of snapshot(WATCH_DIR)) ws.send(e) })
 
-function snapshot() {
-  const events = []
-  try {
-    for (const dir of readdirSync(WATCH_DIR, { withFileTypes: true })) {
-      if (!dir.isDirectory()) continue
-      const dirPath = join(WATCH_DIR, dir.name)
-      for (const f of readdirSync(dirPath)) {
-        if (f.endsWith('.jsonl')) events.push(fileEvent(join(dirPath, f)))
-      }
-    }
-  } catch { /* watch dir missing — empty office */ }
-  return events
-}
-
-wss.on('connection', ws => { for (const e of snapshot()) ws.send(e) })
-
-chokidar.watch(WATCH_DIR, { ignoreInitial: true, depth: 2 })
+// depth 4 reaches <projectDir>/<sessionId>/subagents/agent-*.jsonl (nested subagent transcripts)
+chokidar.watch(WATCH_DIR, { ignoreInitial: true, depth: 4 })
   .on('add', p => broadcast(p))
   .on('change', p => broadcast(p))
 
 function broadcast(filePath) {
-  if (!filePath.endsWith('.jsonl')) return
-  const msg = fileEvent(filePath)
+  const msg = fileEvent(filePath, WATCH_DIR) // null for meta/unknown paths
+  if (!msg) return
   for (const c of wss.clients) { if (c.readyState === 1) c.send(msg) }
 }
 

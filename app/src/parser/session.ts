@@ -7,6 +7,10 @@ const TOOL_STATUS: Record<string, AgentStatus> = {
   Bash: 'running',
   WebSearch: 'browsing', WebFetch: 'browsing',
   Task: 'delegating', Agent: 'delegating',
+  // These tools put a prompt on the user's screen and block until answered: the
+  // moment their tool_use is written, the session is waiting on YOU. Their
+  // tool_result (the answer) flips the status back via the normal result path.
+  AskUserQuestion: 'waiting', ExitPlanMode: 'waiting',
 }
 
 // Tools that spawn a subagent. This Claude Code build names the tool `Agent`;
@@ -26,7 +30,7 @@ export class SessionTracker {
   lastTool?: string
   lastToolTarget?: string
   lastActivityMs = 0
-  private open: { id: string; status: AgentStatus }[] = []
+  private open: { id: string; status: AgentStatus; description?: string; agentType?: string }[] = []
 
   feed(line: ParsedLine): void {
     if (line.timestampMs) this.lastActivityMs = Math.max(this.lastActivityMs, line.timestampMs)
@@ -50,7 +54,10 @@ export class SessionTracker {
         this.status = statusForTool(tu.name)
         for (const t of line.toolUses) {
           // skip falsy ids: their tool_result could never match, leaking a phantom subagent
-          if (SPAWN_TOOLS.has(t.name) && t.id) this.open.push({ id: t.id, status: 'working' })
+          // (targetOf picks `description` for Agent/Task inputs — it's the human-readable label)
+          if (SPAWN_TOOLS.has(t.name) && t.id) {
+            this.open.push({ id: t.id, status: 'working', description: t.target, agentType: t.subagentType })
+          }
         }
       } else if (line.hasText) {
         this.status = 'waiting'
@@ -67,6 +74,34 @@ export class SessionTracker {
   }
 
   get subagents(): SubagentView[] {
-    return this.open.map(s => ({ id: s.id, status: s.status }))
+    return this.open.map(s => ({ id: s.id, status: s.status, description: s.description, agentType: s.agentType }))
+  }
+
+  /** Drive one open subagent from its OWN transcript (nested agent-*.jsonl).
+   *  toolUseId is the Agent tool_use id that spawned it (join key from agent-*.meta.json);
+   *  undefined falls back to the newest open subagent (demo / legacy top-level agent files).
+   *  Returns false when no matching subagent is open (e.g. stale file → caller drops it). */
+  updateSubagent(toolUseId: string | undefined, patch: { status?: AgentStatus; description?: string; agentType?: string }): boolean {
+    const sub = toolUseId ? this.open.find(s => s.id === toolUseId) : this.open[this.open.length - 1]
+    if (!sub) return false
+    if (patch.status) sub.status = patch.status
+    if (patch.description) sub.description = patch.description
+    if (patch.agentType) sub.agentType = patch.agentType
+    return true
+  }
+
+  /** Carry live subagent state across a from-scratch rebuild of the main transcript.
+   *  The main file contains no per-subagent activity (that lives in nested agent files),
+   *  so a rebuild resets every open subagent to the spawn default 'working'. Re-adopt the
+   *  old tracker's richer state — but never clobber a status the rebuild itself derived
+   *  (demo sessions carry isSidechain lines in-file, and those are fresher). */
+  adoptSubagentState(prev: SessionTracker): void {
+    for (const sub of this.open) {
+      const old = prev.open.find(o => o.id === sub.id)
+      if (!old) continue
+      if (sub.status === 'working' && old.status !== 'working') sub.status = old.status
+      sub.description ??= old.description
+      sub.agentType ??= old.agentType
+    }
   }
 }

@@ -1,6 +1,6 @@
-import type { FileEvent, OfficeView, RoomView, TableView } from '../types'
+import type { AgentStatus, FileEvent, OfficeView, RoomView, TableView } from '../types'
 import { parseLine } from '../parser/transcript'
-import { SessionTracker } from '../parser/session'
+import { SessionTracker, statusForTool } from '../parser/session'
 
 const EXPIRY_MS = 5 * 60_000
 // A genuinely-waiting agent (parked in the kitchen waiting on you) gets a longer grace
@@ -33,28 +33,65 @@ export class OfficeStore {
     if (!e.fileName.endsWith('.jsonl')) return
     if (!this.dirOrder.includes(e.dirKey)) this.dirOrder.push(e.dirKey)
 
-    if (e.fileName.startsWith('agent-')) {
-      // Sidechain file: feed lines (forced sidechain) to the newest tracker in this dir with open subagents.
-      const candidates = [...this.sessions.values()]
-        .filter(s => s.dirKey === e.dirKey && s.tracker.subagents.length > 0)
-        .sort((a, b) => b.tracker.lastActivityMs - a.tracker.lastActivityMs)
-      const target = candidates[0]
-      if (!target) return
-      for (const raw of e.content.split('\n')) {
-        const p = parseLine(raw)
-        if (p) target.tracker.feed({ ...p, isSidechain: true })
-      }
-      target.mtimeMs = Math.max(target.mtimeMs, e.mtimeMs)
+    if (e.kind === 'subagent' || e.fileName.startsWith('agent-')) {
+      this.ingestSubagent(e)
       return
     }
 
     const key = e.dirKey + '/' + e.fileName
+    const prev = this.sessions.get(key)
     const tracker = new SessionTracker() // rebuild from scratch: snapshots are full content, append-only
     for (const raw of e.content.split('\n')) {
       const p = parseLine(raw)
       if (p) tracker.feed(p)
     }
+    // a rebuild resets open subagents to 'working'; re-adopt live state driven by nested agent files
+    if (prev) tracker.adoptSubagentState(prev.tracker)
     this.sessions.set(key, { tracker, mtimeMs: e.mtimeMs, dirKey: e.dirKey, fileName: e.fileName })
+  }
+
+  /** A subagent's OWN transcript (<sessionId>/subagents/agent-*.jsonl, or a legacy/demo
+   *  top-level agent-*.jsonl). Derive its live status from its latest tool_use and route
+   *  it to the matching open subagent in the parent session via the toolUseId join key. */
+  private ingestSubagent(e: FileEvent): void {
+    const target = this.findSubagentTarget(e)
+    if (!target) return // parent session unknown, or subagent already closed (stale file)
+
+    let status: AgentStatus | undefined
+    let lastTs = 0
+    for (const raw of e.content.split('\n')) {
+      const p = parseLine(raw)
+      if (!p) continue
+      if (p.timestampMs) lastTs = Math.max(lastTs, p.timestampMs)
+      const tu = p.toolUses[p.toolUses.length - 1]
+      if (p.role === 'assistant' && tu) status = statusForTool(tu.name)
+    }
+    const applied = target.tracker.updateSubagent(e.toolUseId, {
+      status, description: e.description, agentType: e.agentType,
+    })
+    if (!applied) return
+    // subagent work counts as session activity: keep the parent room alive while helpers dig
+    target.tracker.lastActivityMs = Math.max(target.tracker.lastActivityMs, lastTs)
+    target.mtimeMs = Math.max(target.mtimeMs, e.mtimeMs)
+  }
+
+  private findSubagentTarget(e: FileEvent): Entry | undefined {
+    // exact: the <sessionId> path segment names the parent transcript file
+    if (e.sessionId) {
+      const exact = this.sessions.get(e.dirKey + '/' + e.sessionId + '.jsonl')
+      if (exact) return exact
+    }
+    // by join key: any session in this project with that Agent tool_use still open
+    if (e.toolUseId) {
+      for (const s of this.sessions.values()) {
+        if (s.dirKey === e.dirKey && s.tracker.subagents.some(sub => sub.id === e.toolUseId)) return s
+      }
+      return undefined
+    }
+    // legacy/demo fallback: newest tracker in this dir with open subagents
+    return [...this.sessions.values()]
+      .filter(s => s.dirKey === e.dirKey && s.tracker.subagents.length > 0)
+      .sort((a, b) => b.tracker.lastActivityMs - a.tracker.lastActivityMs)[0]
   }
 
   view(): OfficeView {
